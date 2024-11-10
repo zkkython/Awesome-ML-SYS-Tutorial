@@ -1,4 +1,4 @@
-# Awsome-ML-SYS-Tutorial
+# Awesome-ML-SYS-Tutorial
 
 My learning notes/codes for ML SYS.
 
