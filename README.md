@@ -20,7 +20,9 @@ $$
 
 **刊载于 GitHub**
 
-- [PyTorch Distributed](./pytorch-distributed/README.md)，这一部分同样刊载在 [知乎：PyTorch 通讯实践](https://zhuanlan.zhihu.com/p/5853094319)
+- [PyTorch Distributed](./pytorch-distributed/README.md)：`torch.distributed` 的通讯实践， GIL 和 `all_reduce` 的细节。这一部分同样刊载在 [知乎：PyTorch 通讯实践](https://zhuanlan.zhihu.com/p/5853094319)，但是知乎上大概率不全。
+
+- [NCCL 的实现](./nccl/README.md)
 
 
 **刊载于知乎**
@@ -43,5 +45,4 @@ $$
 
 如前文所述，其实大量的材料在知乎等等平台都是有的。**他山之石，可以攻玉，~~懒惰是人类进步的阶梯。~~** 我也将自己学习过其他同行的优秀博文记录在下：
 
-[TODO]
-
+- [[原创][深度][PyTorch] DDP系列第一篇：入门教程](https://zhuanlan.zhihu.com/p/178402798)：虽然我没学明白 DDP 的内容，我只是借此学习了下 GIL 和 ring all reduce，这一步刊载于 [torch-distributed 的后记](./torch-distributed/readme.md#gil)。
