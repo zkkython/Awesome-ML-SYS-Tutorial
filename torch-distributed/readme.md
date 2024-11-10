@@ -251,7 +251,7 @@ if __name__ == "__main__":
 
 这些代码都挺简单的，比较有意思的是，rank 0 的代码经过 `dist.all_reduce(tensor, op=dist.ReduceOp.SUM, group=group1)` 后，就已经保留了第一组的累加结果，但是这两行代码仍然是需要的：
 
-```
+```python
 # 确保所有进程都能获得两个组的累加结果
 dist.all_reduce(group1_sum, op=dist.ReduceOp.MAX)
 dist.all_reduce(group2_sum, op=dist.ReduceOp.MAX)
@@ -813,4 +813,3 @@ if __name__ == "__main__":
 **为什么说 `scatter` 比起 `broadcast` 节省空间？**
 
 考虑一共 4 个进程，需要从 rank 0 发 `[1000, 250]` 维度的数据给 rank 1, 2, 3，那么用 `broadcast` 则每张卡上都得有 `[1000, 250]` 大小的的数据块，然后各自切片。使用 `scatter` 则只有 rank 0 上会有 `[1000, 1000]`，其他 rank 上是 `[1000, 250]`。
-
