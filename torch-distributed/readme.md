@@ -62,6 +62,9 @@
 
 创建全局进程组并将进程加入其中。这个 API 的名字有点迷惑，因为每个进程里面都会执行一次这个指令，听上去像是启动了 8 个全局默认进程组，实际上这里做的事情是类似于 touch 指令。**第一个执行到这里的进程创建并加入全局进程组，之后执行到的进程只需加入。**
 
+<details>
+<summary>init_process_group</summary>
+
 ```python
 import os
 import torch
@@ -152,6 +155,8 @@ if __name__ == "__main__":
     main()
 ```
 
+</details> 
+
 这段代码的核心是这三个接口：
 
 1. 将进程加入全局进程组
@@ -173,6 +178,10 @@ if __name__ == "__main__":
 ## `new_group`
 
  创建自定义进程组，和 `init_process_group()` 一样，创建 or 加入。
+
+
+<details>
+<summary>new_group</summary>
 
 ```python
 import os
@@ -249,6 +258,9 @@ if __name__ == "__main__":
     main()
 ```
 
+</details>
+
+
 这些代码都挺简单的，比较有意思的是，rank 0 的代码经过 `dist.all_reduce(tensor, op=dist.ReduceOp.SUM, group=group1)` 后，就已经保留了第一组的累加结果，但是这两行代码仍然是需要的：
 
 ```python
@@ -286,6 +298,10 @@ dist.all_reduce(group2_sum, op=dist.ReduceOp.MAX)
 - **复杂度**：集合通信简化了数据同步、梯度规约等常见需求，并能提高训练的速度和通信效率。
 
 ## `send` and `recv`
+
+
+<details>
+<summary>send and recv</summary>
 
 ```python
 import os
@@ -347,6 +363,7 @@ if __name__ == "__main__":
     main()
 ```
 
+</details>
 用法非常简单。
 
 - `recv` 需要预先分配好接收数据的 tensor，且大小必须匹配。
@@ -380,6 +397,9 @@ elif rank == 1:
 ## `isend` and `irecv`
 
 如果需要非阻塞通信，可以使用 `isend/irecv`。
+
+<details>
+<summary>isend and irecv</summary>
 
 ```python
 import os
@@ -479,6 +499,8 @@ if __name__ == "__main__":
     main()
 ```
 
+</details>
+
 - 在通信完成前不要修改发送缓冲区，在通信完成前不要使用接收缓冲区，必须等待 `wait()` 完成后才能安全操作相关数据
 - 每个异步操作都会占用系统资源，应及时调用 `wait()` 释放资源
 - 避免同时发起过多未完成的异步操作
@@ -505,6 +527,10 @@ if __name__ == "__main__":
 5. **通讯效率**：
 
 - `all_reduce` 通常比 `all_gather` 更高效，如果只需要得到最终的汇总结果，应优先使用 `all_reduce`，传输的数据量更小，可以利用树形结构进行规约。
+
+
+<details>
+<summary>all_reduce and all_gather</summary>
 
 ```python
 import os
@@ -564,7 +590,13 @@ if __name__ == "__main__":
     main()
 ```
 
+</details>
+
 实际上 `all_reduce` 本身只支持有限的运算，可以通过这些运算的组合实现复杂一些函数，类似于实现分布式的 `softmax`。
+
+
+<details>
+<summary>all_reduce 实现 softmax</summary>
 
 ```python
 import os
@@ -666,7 +698,13 @@ if __name__ == "__main__":
     main()
 ```
 
+
+</details>
+
 ## `broadcast`
+
+<details>
+<summary>broadcast</summary>
 
 ```python
 import os
@@ -725,6 +763,9 @@ if __name__ == "__main__":
     main()
 ```
 
+
+</details>
+
 例子非常简单：
 
 1. `broadcast` 将源进程 src 的张量数据广播到所有其他进程的同名张量
@@ -733,6 +774,10 @@ if __name__ == "__main__":
 4. 数据会直接在预分配的内存上进行修改，而不是创建新的张量
 
 ## `scatter`
+
+
+<details>
+<summary>scatter</summary>
 
 ```python
 import os
@@ -792,6 +837,9 @@ if __name__ == "__main__":
     main()
 ```
 
+
+</details>
+
 - `scatter` 是一对多的分发操作，只有源进程(这里是 rank 0)需要准备完整数据
 - 其他进程的 `scatter_list` 必须设为 None，这是 PyTorch 的规定
 - 数据必须事先按进程数量切分好，每个进程获得一份
@@ -813,3 +861,96 @@ if __name__ == "__main__":
 **为什么说 `scatter` 比起 `broadcast` 节省空间？**
 
 考虑一共 4 个进程，需要从 rank 0 发 `[1000, 250]` 维度的数据给 rank 1, 2, 3，那么用 `broadcast` 则每张卡上都得有 `[1000, 250]` 大小的的数据块，然后各自切片。使用 `scatter` 则只有 rank 0 上会有 `[1000, 1000]`，其他 rank 上是 `[1000, 250]`。
+
+# 后记
+
+这里摘录一些对我蛮有启发的博客的记录。
+
+参考了知乎[[原创][深度][PyTorch] DDP系列第一篇：入门教程](https://zhuanlan.zhihu.com/p/178402798)。
+
+有几个非常重要的概念，我继续问 claude 补充下：
+
+## GIL
+
+众所周知因为 GIL 的存在，Python 的多线程是伪多线程。GIL（Global Interpreter Lock，全局解释器锁）是 Python 解释器 CPython 中的一个互斥锁，它可以确保在任何时候只有一个线程能够执行 Python 字节码。也就是说，即使在多核处理器上，一个 Python 进程同一时刻也只能执行一个线程。
+
+GIL 的设计可以追溯到 1992 年当时是为了解决早期 Python 内存管理的线程安全问题。在那个年代，多核处理器还不普及，单线程执行是主流。GIL 大大简化了 Python 的内存管理，特别是引用计数机制的实现。不需要复杂的锁机制来保护每个对象，一个全局锁就解决了线程安全问题。使得 C 扩展的编写更容易，不需要考虑复杂的线程同步问题。
+
+这种设计的优点:
+
+1. 实现简单且可靠：单线程执行保证了内存管理的安全性，减少了死锁等并发 bug 的可能性，简化了 C 扩展的开发。
+
+2. 对于 I/O 密集型应用影响较小：**Python 在进行 I/O 操作时会释放 GIL，所以对于网络请求、文件读写等场景，多线程仍然可以提供性能提升**，多线程 I/O 是个很实在的需求。
+
+3. 单线程性能更好：没有线程切换开销，不需要复杂的锁机制，内存管理效率更高。
+
+
+缺点:
+
+1. 无法充分利用多核 CPU：同一时刻只能执行一个线程。
+
+2. 在计算密集型任务中性能受限：即使有多个 CPU 核心也无法实现真正的并行计算，所以**Python 处理计算密集型任务需要用多进程**，比如下例：
+
+```python
+# 计算密集型任务在多线程下可能比单线程更慢
+def compute_intensive():
+    for i in range(10000000):
+        x = i * i
+        
+# 多线程版本可能比单线程更慢
+threads = [Thread(target=compute_intensive) for _ in range(4)]
+```
+
+解决方案：
+
+1. 在计算密集型任务中使用多进程替代多线程：
+
+```python
+from multiprocessing import Process
+
+# 使用多进程可以绕过 GIL 限制
+processes = [Process(target=compute_intensive) for _ in range(4)]
+```
+
+2. 使用其他 Python 实现，或者更高版本的 [Python 3.12](https://www.reddit.com/r/Python/comments/1bcggx9/disabling_the_gil_option_has_been_merged_into/)。
+  
+3. 将计算密集型任务用 C/C++ 实现：通过扩展模块方式使用，在 C 代码中可以释放 GIL。
+
+需要注意的是，虽然 GIL 有这些限制，但这并不意味着 Python 不适合开发大型应用。在实际应用中：
+
+1. 大多数应用是 I/O 密集型而不是 CPU 密集型，GIL 的影响有限。
+
+2. 可以通过合适的架构设计规避 GIL 的限制：使用多进程架构，使用异步编程，将计算密集型任务交给专门的服务。
+
+
+## Ring All Reduce and Tree All Reduce
+
+![all reduce](./complete-allreduce.svg)
+
+Claude 画的矢量图属实无敌了...
+
+**对于 Ring All Reduce：**
+
+优点：
+
+- 带宽优化：通信量与节点数量无关，保持恒定；每个节点同时只与两个邻居通信，避免网络拥塞；数据传输更均匀。
+- 可扩展性好：通信复杂度是 O(n)，其中 n 是节点数，适合大规模分布式系统
+- 稳定性高：网络负载均衡；实现容错算法更加简单。
+
+缺点：
+
+- 延迟较高：需要 2(n-1) 步完成；每个节点都需要等待数据传递完整个环。
+- 对于小规模数据传输可能不够高效。
+
+**对于 Tree All Reduce：**
+
+优点：
+
+- 延迟低：通信步数是 O(log n)，对于小规模数据或需要低延迟的场景更有优势。
+- 适合小规模集群：启动开销小。
+
+缺点：
+
+- 带宽利用不均衡：靠近根节点的链路负载更重，可能造成网络拥塞。
+- 可扩展性受限：随节点数增加，根节点可能成为瓶颈。
+- 容错算法相对复杂。
