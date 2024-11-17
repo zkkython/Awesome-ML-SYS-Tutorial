@@ -396,7 +396,8 @@ elif rank == 1:
 
 ## `isend` and `irecv`
 
-如果需要非阻塞通信，可以使用 `isend/irecv`。
+- 如果需要非阻塞通信，可以使用 `isend/irecv`
+- 也可以使用[dist.batch_isend_irecv](https://pytorch.org/docs/stable/distributed.html#torch.distributed.batch_isend_irecv) fuse多个P2P通信操作. 该函数会尝试[fuse多个NCCL kernel来提高throughput](https://github.com/pytorch/pytorch/issues/132852)，并re-order通信顺序以减少deadlock概率。
 
 <details>
 <summary>isend and irecv</summary>
@@ -501,7 +502,7 @@ if __name__ == "__main__":
 
 </details>
 
-- 在通信完成前不要修改发送缓冲区，在通信完成前不要使用接收缓冲区，必须等待 `wait()` 完成后才能安全操作相关数据
+- 在通信完成前不要修改发送缓冲区(buffer)，在通信完成前不要使用接收缓冲区，必须等待 `wait()` 完成后才能安全操作相关数据
 - 每个异步操作都会占用系统资源，应及时调用 `wait()` 释放资源
 - 避免同时发起过多未完成的异步操作
 - 异步操作可能在后台失败，`wait()` 调用会暴露通信过程中的错误，建议使用 `try-finally` 确保资源正确清理
@@ -906,12 +907,11 @@ threads = [Thread(target=compute_intensive) for _ in range(4)]
 1. 在计算密集型任务中使用多进程替代多线程：
 
 ```python
-from multiprocessing import Process
+from multiprocessing import Process # or use mp.spawn
 
 # 使用多进程可以绕过 GIL 限制
 processes = [Process(target=compute_intensive) for _ in range(4)]
 ```
-
 2. 使用其他 Python 实现，或者更高版本的 [Python 3.12](https://www.reddit.com/r/Python/comments/1bcggx9/disabling_the_gil_option_has_been_merged_into/)。
   
 3. 将计算密集型任务用 C/C++ 实现：通过扩展模块方式使用，在 C 代码中可以释放 GIL。
@@ -920,12 +920,13 @@ processes = [Process(target=compute_intensive) for _ in range(4)]
 
 1. 大多数应用是 I/O 密集型而不是 CPU 密集型，GIL 的影响有限。
 
-2. 可以通过合适的架构设计规避 GIL 的限制：使用多进程架构，使用异步编程，将计算密集型任务交给专门的服务。
+2. 可以通过合适的架构设计规避 GIL 的限制：使用多进程架构，使用异步编程，将计算密集型任务交给专门的服务，或调用C/C++接口。
 
 
 ## Ring / Tree Algorithm
-
-![all reduce](./complete-allreduce.svg)
+- NCCL在启动Collective Communication前会根据网络通信拓扑benchmark不同算法，并选择延迟最低的. Ring和Tree是NCCL中最常见的两种拓扑算法，常应用于![All-Reduce](./complete-allreduce.svg)，但也会被其他算子(Ring All-Gather, All-to-All)使用。
+- 更复杂的算法有[SHARP](https://network.nvidia.com/pdf/solutions/hpc/paperieee_copyright.pdf)，一种multicast的延伸算法（in-network reduction），使用网络swtiches(e.g. [NVSwitch](https://github.com/NVIDIA/nccl/issues/807)) 上的处理器执行reduction来避免offload数据到CPU/GPU上，减少延迟和SM占用。
+- 以下分析中, n为参与计算的GPU数量。NVIDIA通常一个节点(node)有8个GPU，由高带宽NVLINK + NVSwitch densely connect成一个complete graph网络拓扑
 
 Claude 画的矢量图属实无敌了...
 
@@ -935,15 +936,19 @@ Claude 画的矢量图属实无敌了...
 
 **优点:**
 
-- 带宽效率高: 每个节点同时接收和发送数据,能充分利用硬件带宽
+- 带宽利用率高: 每个节点同时接收和发送数据,能充分利用硬件带宽
 - 负载均衡: 每个节点处理相同数量的数据,网络负载分布均匀
 - 实现简单: 容错和同步机制相对直观
 
 **缺点:**
 
 - 延迟与节点数呈线性关系: 完成一次 AllReduce 需要 2(n-1) 步
-- 不适合大规模集群: 在数千节点规模下,线性增长的延迟会显著影响性能
+- 不适合大规模集群: 在数千节点规模下,线性增长的延迟会显著影响性能, 且少数缓慢straggler节点容易成为通信瓶颈.
 - 对小数据传输效率不高: 启动开销相对较大
+
+**拓展/应用:**
+- NCCL在单节点/节点数少时更容易选择Ring算法，[并不会混用Ring和Tree](https://github.com/NVIDIA/nccl/issues/471)（也许是懒/为了实现和benchmark简单:( .
+- 可用Double/2D Ring Topology高效利用节点内（intra-node）带宽，掩盖/缓解节点间（inter-node）通信延迟。NCCL并未采用2D ring, 但论文 [LoongTrain](https://arxiv.org/abs/2406.18485)用了2D ring来加速Ring Attention。
 
 ### Tree Algorithm
 
@@ -951,22 +956,24 @@ Claude 画的矢量图属实无敌了...
 
 **优点**
 
-- 延迟与节点数呈对数关系: 完成通信只需 O(log n) 步
-- 适合大规模集群: 在大规模场景(如 24000+ GPU)下表现优异
-- 带宽利用率高: 每个节点在两棵树中分别承担不同角色,保证负载均衡
+- 延迟低：与节点数呈对数关系: 完成通信只需 O(log n) 步
+- 适合大规模集群/节点间通信: 在大规模场景(如 24000+ GPU)下表现优异
 
 **缺点**
 
 - 实现复杂: 需要维护两棵互补的二叉树结构
 - 小规模场景优势不明显: 在节点数较少时,额外的树结构维护开销可能得不偿失
 - 对网络拓扑结构要求较高: 需要良好的网络互联以支持树形通信
+- 带宽利用率不如Ring
 
+**拓展/应用**
+- 序列并行算法[Tree Attention](https://arxiv.org/abs/2408.04093) 使用Tree All-Reduce来加速推理时的long-context attention计算，比Ring Attention更scalable, 但由于难以overlap计算和通讯不适用于训练。
 
 ### Double Binary Tree Algorithm
 
-从 NCCL 2.4 版本开始，默认使用的是 Double Binary Tree 算法，主要用于机间通信。相比于传统的 Tree Algorithm，构造了两棵互补的二叉树用于平衡通信开销。
-
-1. 互补结构：每个节点在一棵树中是内部节点（参与数据传递和计算），在另一棵树中是叶子节点（只参与数据接收），确保每个节点的工作负载大致相同。
+从 NCCL 2.4 版本开始，对于node数较多的跨节点通信使用 [Double Binary Tree](https://developer.nvidia.com/blog/massively-scale-deep-learning-training-nccl-2-4/) 算法。相比于传统的 Tree Algorithm，构造了两棵互补的二叉树用于平衡通信开销。
+![Double Binary Tree](./DBTree.jpg)
+1. 互补结构：每个节点在一棵树中是内部节点（参与数据发送和计算），在另一棵树中是叶子节点（只参与数据接收），确保每个节点的工作负载大致相同。
 
 
 2. 数据分割：将需要传输的数据分成两部分，每棵树负责处理一半的数据，两棵树并行工作。
@@ -1012,3 +1019,18 @@ Claude 画的矢量图属实无敌了...
 - Ring Algorithm: 延迟约 180ms
 - Tree Algorithm: 延迟约 1ms
 - 性能差距接近 180 倍
+
+## 拓展资料
+- NCCL拓扑benchmark和选择: 
+    - https://zhuanlan.zhihu.com/p/718639633 
+    - 设置环境变量查看NCCL init时拓扑benchmark结果（输出一个表格: latency/bandwidth): `NCCL_DEBUG=INFO NCCL_DEBUG_SUBSYS=INIT,ENV,TUNING`
+    - 设置环境变量控制NCCL拓扑算法: `NCCL_ALGO=TREE` 或 `NCCL_ALGO=RING`
+- All-gather 算法拓扑： https://github.com/NVIDIA/nccl/issues/1123
+- 手动跑NCCL性能benchmark: https://github.com/NVIDIA/nccl/issues/569
+- SHARP算法的性能优势:
+    - https://www.hpcuserforum.com/presentations/swiss/MellanoxHPCTechnology.pdf
+    - https://www.youtube.com/watch?v=is7aBZ1_Op0
+- 多机环境下，可用 `ibstatus` 查看Infiniband网卡状态
+- 设置 `NCCL_MAX_NCHANNELS=1`可限制cpu issue kernel到gpu的通道数为1（GPU端scheduler launch kernel后照不同CUDA stream并行执行）, 以保证kernel launch的顺序和cpu端调度一致，避免通讯kernel先启动，抢占计算kernel SM后delay其运行，无法overlap。
+    - https://forums.developer.nvidia.com/t/how-many-streams-maximum-number-of-streams/6571/6
+    - https://zhuanlan.zhihu.com/p/706805407
