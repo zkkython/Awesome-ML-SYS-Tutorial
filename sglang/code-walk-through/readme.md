@@ -1,4 +1,5 @@
 # Walk Through SGLang / VLLM Worker
+[English Version](readme_eng.md)
 
 为了实现 SGLang 支持 OpenRLHF 的接口，我们需要在 SGLang 中接入这[两个接口](https://github.com/OpenRLHF/OpenRLHF/blob/main/openrlhf/trainer/ray/vllm_worker_wrap.py)：
 
@@ -139,7 +140,7 @@ def vocab_size(self) -> int
 
 ## `ExecutorBase`
 
-`Worker` 类之负责管理单张 GPU，很自然我们进一步看看 `Worker` 类之上更大的管理类。[ExecutorBase](https://github.com/vllm-project/vllm/blob/main/vllm/executor/executor_base.py) 负责做的是一个抽象的管理基类（各种 Executor 的基类），定义各类 Executor 的接口规范。
+`Worker` 类负责管理单张 GPU，很自然我们进一步看看 `Worker` 类之上更大的管理类。[ExecutorBase](https://github.com/vllm-project/vllm/blob/main/vllm/executor/executor_base.py) 负责做的是一个抽象的管理基类（各种 Executor 的基类），定义各类 Executor 的接口规范。
 
 1. **定义接口**：
 
