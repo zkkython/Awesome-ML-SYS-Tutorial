@@ -251,7 +251,7 @@ def has_unfinished_requests(self) -> bool:
 
 相比于 vllm 中 all in one 的 `Worker` 类，SGLang 中对于单张 GPU 上的模型管理分拆为了 [TpModelWorker](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/managers/tp_worker.py) 和 [ModelRunner](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/model_executor/model_runner.py) 类：
 
-- `TpModelWorker`：类似于 vllm 的 Worker,也是管理单个 GPU 上的模型。但功能相对简单,主要负责初始化模型和分布式环境、管理内存池、执行模型的前向传播、分类处理 embedding 和生成任务。
+- `TpModelWorker`：类似于 vllm 的 `Worker`，也是管理单个 GPU 上的模型。但功能相对简单，主要负责初始化模型和分布式环境、管理内存池、执行模型的前向传播、分类处理 embedding 和生成任务。
 - `ModelRunner`：负责执行模型推理，并提供接口给 `TpModelWorker` 调用。
 
 对比来看:
@@ -971,3 +971,5 @@ FastAPI Response (HTTP)
 - OpenAI 兼容接口
 
 `Runtime` 相比 `Engine` ，增加了 HTTP 服务层，提供了更完整的 API 接口，支持远程调用，更适合作为独立服务部署。
+
+
