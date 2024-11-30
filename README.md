@@ -22,11 +22,15 @@ $$
 
 其实也连载于知乎，但是知乎的 markdown 支持太糟糕了，所以建议直接切原片，看 GitHub Repo。
 
-- [PyTorch Distributed](./torch-distributed/readme.md)：`torch.distributed` 的通讯实践， GIL 和 `all_reduce` 的细节。这一部分同样刊载在 [知乎：PyTorch 通讯实践](https://zhuanlan.zhihu.com/p/5853094319)。
+- [Latency optimization for weight updates](./sglang/latency-accerlerate-for-weight-updates/readme.md)：一次对效率的 debug 过程，同样刊载于[记一次对 SGLang weight update latency 的优化](https://zhuanlan.zhihu.com/p/9908228168)。
+
+- [Walk Through SGLang / VLLM Worker](./sglang/code-walk-through/readme.md)：SGLang 的代码解析，同样刊载于 [Walk Through SGLang / VLLM Worker](https://zhuanlan.zhihu.com/p/6363614076)。
 
 - [NCCL 与 NVIDIA TOPO](./nccl/readme.md)：NCCL 的入门与 NVIDIA 显卡的检测，同样刊载于[NCCL 与 NVIDIA TOPO](https://zhuanlan.zhihu.com/p/6160835906)。
 
-- [Walk Through SGLang / VLLM Worker](./sglang/code-walk-through/readme.md)：SGLang 的代码解析，同样刊载于 [Walk Through SGLang / VLLM Worker](https://zhuanlan.zhihu.com/p/6363614076)。
+- [PyTorch Distributed](./torch-distributed/readme.md)：`torch.distributed` 的通讯实践， GIL 和 `all_reduce` 的细节。这一部分同样刊载在 [知乎：PyTorch 通讯实践](https://zhuanlan.zhihu.com/p/5853094319)。
+
+
 
 **刊载于知乎**
 
