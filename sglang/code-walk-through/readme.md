@@ -69,7 +69,7 @@ TokenizerManager runs in Server's main weprocess, handling request tokenization.
 
 ## Scheduler Receive Requests and Process Batches
 
-The Scheduler runs as Server’s subprocess, initialized via `run_scheduler_process` and executing its infinite event loop with `event_loop_normal` or `event_loop_overlap`.
+The Scheduler runs as Server’s subprocess, initialized via `run_scheduler_process` and executing its infinite event loop with `event_loop_normal` or `event_loop_overlap`. Details can be found in [scheduler.py](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/managers/scheduler.py).
 
 ### Initialization
 
@@ -79,7 +79,7 @@ The Scheduler runs as Server’s subprocess, initialized via `run_scheduler_proc
 4. Manage caching using ChunkCache or RadixCache and configure SchedulePolicy.
 5. Set up chunk prefill parameters and GrammarBackend for request processing.
 
-###Event Loop
+### Event Loop
 
 The Scheduler continuously executes its event loop, alternating between `get_next_batch_to_run`, `run_batch` and `process_batch_result`.
 
@@ -105,7 +105,7 @@ After `run_batch`, Scheduler processes batch results in event_loop_normal:
 
 ## TpModelWorker Manage Forward and Token Sampling
 
-TpModelWorker manages ModelRunner’s forward and sampling for batches of requests scheduled by Scheduler.
+TpModelWorker manages ModelRunner’s forward and sampling for batches of requests scheduled by Scheduler. It's implementation can be found in [tp_worker.py](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/managers/tp_worker.py).
 
 ### Initialization
 
@@ -161,7 +161,7 @@ The most import acceleration comes from the interaction between `forward_batch` 
 
 ## AttentionBackend Accelerate Model Forward
 
-SGLang supports several AttentionBackends](https://github.com/sgl-project/sglang/tree/main/python/sglang/srt/layers/attention) which accelerate model forward and KV cache reuse.
+SGLang supports several [AttentionBackends](https://github.com/sgl-project/sglang/tree/main/python/sglang/srt/layers/attention) which accelerate model forward and KV cache reuse.
 
 ### Initialization
 
@@ -182,6 +182,8 @@ SGLang supports several AttentionBackends](https://github.com/sgl-project/sglang
 2. Attention Calculation: Computes attention, optionally managing key-value caching, and returns the reshaped output.
 
 ## DetokenizerManager Detokenize and Send to TokenizerManager
+
+We can find the detokenizer manager in [detokenizer_manager.py](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/managers/detokenizer_manager.py).
 
 ### Initialization
 
