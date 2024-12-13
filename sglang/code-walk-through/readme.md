@@ -1,6 +1,6 @@
 # SGLang Code Walk Through
 
-**[Warning: This is a work in progress, and the content is not yet complete. We are still polishing the content and will update it soon.]**
+**[Warning: This is working in progress, and the content is not yet complete. We are still polishing the content and will update it soon.]**
 
 This doc serve as a developer-level guidance and provide a brief code walkthrough of SGLang's backend, tracing the path of how requests are processed, as shown in the following figure.
 
