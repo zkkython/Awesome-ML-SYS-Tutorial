@@ -105,7 +105,7 @@ The Scheduler continuously executes its event loop, alternating between `get_nex
 
 ### [Processing and Finalizing Results](https://github.com/sgl-project/sglang/blob/f8b0326934bacb7a7d4eba68fb6eddebaa6ff751/python/sglang/srt/managers/scheduler.py#L987)
 
- In serving engines, LLM inference is usually broken into prefill and decode stages for their different compute charactor. You can check [this post](https://huggingface.co/blog/martinigoyanes/llm-inference-at-scale-with-tgi) from HuggingFace regarding the concept of Prefill and Decode. In SGLang, [extend mode](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/layers/attention/flashinfer_backend.py) is used instead of prefill mode most of the time. Prefill initializes KV-Cache for new requests, typically using Paged KV-Cache. Extend updates existing KV-Cache incrementally, often leveraging Ragged Tensors for efficiency, making it ideal for long sequences or multi-turn tasks.
+ In serving engines, LLM inference is usually broken into Prefill and Decode stages for their different compute charactor. You can check [this post](https://huggingface.co/blog/martinigoyanes/llm-inference-at-scale-with-tgi) from HuggingFace regarding the concept of Prefill and Decode. In SGLang, [extend mode](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/layers/attention/flashinfer_backend.py) is used instead of prefill mode most of the time. Prefill initializes KV-Cache for new requests, typically using Paged KV-Cache. Extend updates existing KV-Cache incrementally, often leveraging Ragged Tensors for efficiency, making it ideal for long sequences or multi-turn tasks.
 
 After `run_batch`, Scheduler processes batch results in `event_loop_normal`:
 
@@ -126,7 +126,7 @@ TpModelWorker manages ModelRunner’s forward and sampling for batches of reques
 
 1. Create a `ForwardBatch` with `model_worker_batch` and ModelRunner.
 2. Compute logits and sample next tokens using ModelRunner’s `forward` and `sample`.
-3. Return Results to Scheduler for process_batch_result.
+3. Return Results to Scheduler for `process_batch_result`.
 
 ### [forward_batch_embedding](https://github.com/sgl-project/sglang/blob/f8b0326934bacb7a7d4eba68fb6eddebaa6ff751/python/sglang/srt/managers/tp_worker.py#L160)
 
