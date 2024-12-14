@@ -46,8 +46,8 @@ Note that all the discussions are based on release [v0.4.0](https://github.com/s
 SGLang features an SRT (SGLang Runtime) Server for [serving online HTTP requests](https://sgl-project.github.io/start/send_request.html) and an Engine for [offline model execution](https://sgl-project.github.io/backend/offline_engine_api.html). Key functions, [`launch_server`](https://github.com/sgl-project/sglang/blob/f8b0326934bacb7a7d4eba68fb6eddebaa6ff751/python/sglang/srt/server.py#L507) and [`launch_engine`](https://github.com/sgl-project/sglang/blob/f8b0326934bacb7a7d4eba68fb6eddebaa6ff751/python/sglang/srt/server.py#L418), are in [server.py](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/server.py). The `launch_engine` function initializes core SRT Server components.
 
 1. Set up configs (logger, server args, CUDA/NCCL env, inter-process ports) and download the model and tokenizer.
-2. Run Scheduler processes: Each Scheduler runs TpModelWorker for prefill and decode, manage radix cache, and handles TokenizerManager requests in infinite event loop. If `dp_size > 1`, `run_data_parallel_controller_process`; otherwise, initialize a Scheduler for each `tp_rank`.
-3. Run TokenizerManager and DetokenizerManager as subprocesses: the former tokenizes data for the Scheduler, and the latter detokenizes Scheduler outputs for the server frontend. For multi-node inference (e.g., Llama 3.1 405B), TokenizerManager and DetokenizerManager only run on the first node.
+2. Run Scheduler processes: Each Scheduler runs TpModelWorker for prefill and decode, manage Radix Cache, and handles TokenizerManager requests in infinite event loop. If `dp_size > 1`, `run_data_parallel_controller_process`; otherwise, initialize a Scheduler for each `tp_rank`.
+3. Run TokenizerManager and DetokenizerManager as subprocesses: the former tokenizes data for the Scheduler, and the latter detokenizes Scheduler outputs for the server frontend. For multi-node inference (e.g., Llama 3.1 405B with TP8), TokenizerManager and DetokenizerManager only run on the first node.
 4. Apply chat templates via (if specified) and wait for Scheduler processes to signal readiness while collecting their configuration.
 
 ## Forward Requests From Server
@@ -65,7 +65,7 @@ TokenizerManager runs in Server's main weprocess, handling request tokenization.
 
 ### [Initialization](https://github.com/sgl-project/sglang/blob/f8b0326934bacb7a7d4eba68fb6eddebaa6ff751/python/sglang/srt/managers/tokenizer_manager.py#L88)
 
-1. Set up ZeroMQ for inter-process communication, including sockets for DetokenizerManager and Scheduler.
+1. Set up [ZeroMQ](https://libzmq.readthedocs.io/en/latest/) for inter-process communication, including sockets for DetokenizerManager and Scheduler.
 2. Configure `server_args`, enable `metrics`, initialize `model_config`, `tokenizer`, and placeholders for multi-modal image processors.
 
 ### [generate_request](https://github.com/sgl-project/sglang/blob/f8b0326934bacb7a7d4eba68fb6eddebaa6ff751/python/sglang/srt/managers/tokenizer_manager.py#L173)
@@ -83,7 +83,7 @@ The Scheduler runs as Server’s subprocess, initialized via `run_scheduler_proc
 
 ### [Initialization](https://github.com/sgl-project/sglang/blob/f8b0326934bacb7a7d4eba68fb6eddebaa6ff751/python/sglang/srt/managers/scheduler.py#L97)
 
-1. Set up ZeroMQ for communication with TokenizerManager and response handling.
+1. Set up [ZeroMQ](https://libzmq.readthedocs.io/en/latest/) for communication with TokenizerManager and response handling.
 2. Configure `server_args`, `port_args`, `model_config`, `sessions`, and initialize TpModelWorker or TpModelWorkerClient based on overlap scheduling.
 3. Initialize tokenizer and processor for multimodal or standard models based on server arguments.
 4. Manage caching using ChunkCache or RadixCache and configure SchedulePolicy.
@@ -101,7 +101,7 @@ The Scheduler continuously executes its event loop, alternating between `get_nex
 ### [run_batch](https://github.com/sgl-project/sglang/blob/f8b0326934bacb7a7d4eba68fb6eddebaa6ff751/python/sglang/srt/managers/scheduler.py#L956)
 
 1. For generation models, use TpModelWorker’s `forward_batch_generation` for token prediction or `forward_batch_idle` for idle tasks, returning results to `event_loop_normal`.
-2. For embedding or reward models, assert token extension, execute `forward_batch_embedding`, and return embeddings.
+2. For embedding or reward models, execute `forward_batch_embedding`, and return embeddings.
 
 ### [Processing and Finalizing Results](https://github.com/sgl-project/sglang/blob/f8b0326934bacb7a7d4eba68fb6eddebaa6ff751/python/sglang/srt/managers/scheduler.py#L987)
 
@@ -207,7 +207,7 @@ Sets up communication sockets and the tokenizer. Manages decoding states with `L
 
 ## [FastAPI Wraps the Output](https://github.com/sgl-project/sglang/blob/f8b0326934bacb7a7d4eba68fb6eddebaa6ff751/python/sglang/srt/server.py#L287)
 
-1. DetokenizerManager sends `BatchStrOut` to TokenizerManager via ZeroMQ.
+1. DetokenizerManager sends `BatchStrOut` to TokenizerManager via [ZeroMQ](https://libzmq.readthedocs.io/en/latest/).
 2. TokenizerManager updates request states and prepares decoded text for FastAPI.
 3. For streaming, use an async generator and `StreamingResponse` in FastAPI.
 4. For non-streaming, collect and send the complete response using `ORJSONResponse`.
