@@ -22,7 +22,7 @@ $$
 
 其实也连载于知乎，但是知乎的 markdown 支持太糟糕了，所以建议直接切原片，看 GitHub Repo。
 
-- [SGLang Code Walk Through](./sglang/code-walk-through/readme.md)：SGLang 的代码解析，同样刊载于 [Walk Through SGLang / VLLM Worker](https://zhuanlan.zhihu.com/p/6363614076)，这次我们还贴心提供了[英文版本](https://github.com/zhaochenyang20/Awesome-ML-SYS-Tutorial/blob/main/sglang/sglang-worker/readme_eng.md)。
+- [SGLang Code Walk Through](./sglang/code-walk-through/readme.md)：一个请求被 SGLang Engine 处理的全过程，只有英文版本，工程量太大了，还在施工中。
 
 - [Latency optimization for weight updates](./sglang/latency-accelerte-for-weight-updates/readme.md)：一次对效率的 debug 过程，同样刊载于[记一次对 SGLang weight update latency 的优化](https://zhuanlan.zhihu.com/p/9908228168)。
 

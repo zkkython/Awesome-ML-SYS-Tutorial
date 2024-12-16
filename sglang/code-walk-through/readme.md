@@ -1,7 +1,5 @@
 # SGLang Code Walk Through
 
-**[Warning: This is working in progress, and the content is not yet complete. We are still polishing the content and will update it soon.]**
-
 This doc serve as a developer-level guidance and provide a brief code walkthrough of SGLang's backend, tracing the path of how requests are processed, as shown in the following figure.
 
 <div style="text-align: center; width: 100%; margin: 0 auto;">
@@ -28,7 +26,7 @@ Specifically, requests flow through the following process to get responses:
     - The model, accelerated by `AttentionBackend`, generates logits, which are returned to ModelRunner and subsequently to TpModelWorker.
     - TpModelWorker receives the `logits_output` from ModelRunner, calls ModelRunner's `sample` method to generate `next_token_ids`, and sends them back to the Scheduler.
     - The Scheduler processes the batch results using `process_batch_result` and checks the completion status via `check_finished`.
-    - If requests are completed, the `process_batch_result_decode` function adds them to the cache using `tree_cache.cache_finished_req(req)` and sends their outputs to Scheduler's `stream_output`.
+    - If requests are completed, the `process_batch_result` function adds them to the cache using `tree_cache.cache_finished_req(req)` and sends their outputs to Scheduler's `stream_output`.
     - In `stream_output`, Scheduler processes the outputs, wraps them into `BatchTokenIDOut`, and send to the DetokenizerManager.
 
 6. The DetokenizerManager, running its own event loop, receives `BatchTokenIDOut`, processes it, and sends `BatchStrOut` back to TokenizerManager.
@@ -37,11 +35,20 @@ Specifically, requests flow through the following process to get responses:
 
 8. The FastAPI Server packages the response and sends it back to the user.
 
-## Acknowledge
+## Acknowledge And Notation
 
-SGLang's architecture design learnt  a lot from previous works, including [Guidance](https://github.com/guidance-ai/guidance), [vLLM](https://github.com/vllm-project/vllm), [LightLLM](https://github.com/ModelTC/lightllm), [FlashInfer](https://github.com/flashinfer-ai/flashinfer), [Outlines](https://github.com/outlines-dev/outlines), and [LMQL](https://github.com/eth-sri/lmql).
+SGLang's architecture design learnt  a lot from previous works, including [Guidance](https://github.com/guidance-ai/guidance), [vLLM](https://github.com/vllm-project/vllm), [LightLLM](https://github.com/ModelTC/lightllm), [FlashInfer](https://github.com/flashinfer-ai/flashinfer), [Outlines](https://github.com/outlines-dev/outlines), and [LMQL](https://github.com/eth-sri/lmql). Note that SGLang's Scheduler explicitly sets four statges to handles the overlap scheduling of asynic requests, which is proposed in SGLang for the first time and adopted by other popular LLM serving engines.
 
-All the discussions are based on release [v0.4.0](https://github.com/sgl-project/sglang/tree/f8b0326934bacb7a7d4eba68fb6eddebaa6ff751). We sincerely appreciate [Chenyang Zhao](https://zhaochenyang20.github.io/Chayenne/), [Wenxuan Tan](https://github.com/Edenzzzz),  [Simon Veitner](https://simveit.github.io/) and [Shuai Shi](https://shuaills.github.io/) for their contribution to this document.
+All the discussions are based on release [v0.4.0](https://github.com/sgl-project/sglang/tree/f8b0326934bacb7a7d4eba68fb6eddebaa6ff751). We sincerely appreciate [Chenyang Zhao](https://zhaochenyang20.github.io/Chayenne/), [Wenxuan Tan](https://github.com/Edenzzzz),  [Simon Veitner](https://simveit.github.io/) and [Shuai Shi](https://shuaills.github.io/), [Shizhe Diao](https://shizhediao.github.io/),  [Shending Hu](https://shengdinghu.github.io/), [Xiaoyu Zhang](https://github.com/BBuf), [agiping](https://github.com/agiping) for their contribution to this document.
+
+**Note that this document is under construction and these parts will be included in the future.**
+
+1. Radix Cache Management with Attention Backend.
+2. `get_next_batch_to_run`: How to fetch and write KV cache for requests in each batch.
+3. `get_model_worker_batch`.
+4. `write_req_to_token_pool_trition`.
+5. CUDA Graphs for Attention Backend.
+
 
 ## Launch Server
 
@@ -50,7 +57,7 @@ SGLang features an SRT (SGLang Runtime) Server for [serving online HTTP requests
 
 1. Set up configs (logger, server args, CUDA/NCCL env, inter-process ports) and download the model and tokenizer.
 2. Run Scheduler processes: Each Scheduler runs a TpModelWorker for prefill and decode, manages Radix Cache, and handles TokenizerManager requests in an infinite event loop. If `dp_size > 1`, `run_data_parallel_controller_process`; otherwise, initialize a Scheduler for each `tp_rank`.
-3. Run TokenizerManager and DetokenizerManager as subprocesses: the former tokenizes data for the Scheduler, and the latter detokenizes Scheduler outputs for the server frontend. For multi-node inference (e.g., Llama 3.1 405B), TokenizerManager and DetokenizerManager only run on the first node.
+3. Run TokenizerManager and DetokenizerManager as subprocesses: the former tokenizes data for the Scheduler, and the latter detokenizes Scheduler outputs for the server frontend. For multi-node inference (e.g., Llama 3.1 405B on 2 nodes with 8 H100 on each node), TokenizerManager and DetokenizerManager only run on the first node.
 4. Apply chat templates (if specified) and wait for Scheduler processes to signal readiness while collecting their configuration.
 
 
@@ -85,8 +92,6 @@ The Server employs a FastAPI app to define API endpoints, forwarding [`/v1/chat/
 ## Scheduler Receive Requests and Process Batches
 
 [Scheduler](https://github.com/sgl-project/sglang/blob/f8b0326934bacb7a7d4eba68fb6eddebaa6ff751/python/sglang/srt/managers/scheduler.py#L97) runs as Server's subprocess, initialized via `run_scheduler_process` and executes its infinite event loop with `event_loop_normal` or `event_loop_overlap`.
-
-Note that Scheduler explicitly sets four statges to handles the overlap scheduling of requests, which is proposed in SGLang for the first time.
 
 ### [Initialization](https://github.com/sgl-project/sglang/blob/f8b0326934bacb7a7d4eba68fb6eddebaa6ff751/python/sglang/srt/managers/scheduler.py#L97)
 
@@ -152,7 +157,7 @@ After `run_batch`, Scheduler processes batch results in `event_loop_normal`:
 
 ## ModelRunner Manages Model Execution
 
-[ModelRunner](https://github.com/sgl-project/sglang/blob/f8b0326934bacb7a7d4eba68fb6eddebaa6ff751/python/sglang/srt/model_executor/model_runner.py#L66) initialize the attention backend and manage the loaded model to perform various types of forward passes.
+[ModelRunner](https://github.com/sgl-project/sglang/blob/f8b0326934bacb7a7d4eba68fb6eddebaa6ff751/python/sglang/srt/model_executor/model_runner.py#L66) initialize the attention backend and manage the loaded model to perform forward passes for generation and embedding tasks.
 
 ### [Initialization](https://github.com/sgl-project/sglang/blob/f8b0326934bacb7a7d4eba68fb6eddebaa6ff751/python/sglang/srt/model_executor/model_runner.py#L66)
 
