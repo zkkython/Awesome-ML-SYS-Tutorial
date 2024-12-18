@@ -48,6 +48,7 @@ All the discussions are based on release [v0.4.0](https://github.com/sgl-project
 3. `get_model_worker_batch`.
 4. `write_req_to_token_pool_trition`.
 5. CUDA Graphs for Attention Backend.
+6. Overlapping scheduling.
 
 
 ## Launch Server
