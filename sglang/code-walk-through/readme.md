@@ -1,5 +1,7 @@
 # SGLang Code Walk Through
 
+[TODO: 概念和代码的名字？概念是概念，代码是代码，对我们的 workflow 图明确点，然后把 KV cache management 加进来]
+
 This doc serve as a developer-level guidance and provide a brief code walkthrough of SGLang's backend, tracing the path of how requests are processed, as shown in the following figure.
 
 <div style="text-align: center; width: 100%; margin: 0 auto;">
@@ -37,7 +39,7 @@ Specifically, requests flow through the following process to get responses:
 
 ## Acknowledge And Notation
 
-SGLang's architecture design learnt  a lot from previous works, including [LightLLM](https://github.com/ModelTC/lightllm), [FlashInfer](https://github.com/flashinfer-ai/flashinfer), [Guidance](https://github.com/guidance-ai/guidance), [LMQL](https://github.com/eth-sri/lmql)， [Outlines](https://github.com/outlines-dev/outlines) and [vLLM](https://github.com/vllm-project/vllm). Note that SGLang's Scheduler explicitly sets four statges to handles the overlap scheduling of asynic requests, which is proposed in SGLang for the first time and adopted by other popular LLM serving engines.
+[TODO: offical 可以不用 Acknowledge，仅供内部传阅，和宣传稿平级]
 
 All the discussions are based on release [v0.4.0](https://github.com/sgl-project/sglang/tree/f8b0326934bacb7a7d4eba68fb6eddebaa6ff751). We sincerely appreciate [Chenyang Zhao](https://zhaochenyang20.github.io/Chayenne/), [Wenxuan Tan](https://github.com/Edenzzzz),  [Simon Veitner](https://simveit.github.io/), [Shuai Shi](https://shuaills.github.io/), [Shizhe Diao](https://shizhediao.github.io/), [Shending Hu](https://shengdinghu.github.io/), [Xiaoyu Zhang](https://github.com/BBuf), [agiping](https://github.com/agiping) for their contribution to this document.
 
@@ -50,9 +52,7 @@ All the discussions are based on release [v0.4.0](https://github.com/sgl-project
 5. CUDA Graphs for Attention Backend.
 6. Overlapping scheduling.
 
-
 ## Launch Server
-
 
 SGLang features an SRT (SGLang Runtime) Server for [serving online HTTP requests](https://sgl-project.github.io/start/send_request.html) and an Engine for [offline model execution](https://sgl-project.github.io/backend/offline_engine_api.html). Key functions, [`launch_server`](https://github.com/sgl-project/sglang/blob/f8b0326934bacb7a7d4eba68fb6eddebaa6ff751/python/sglang/srt/server.py#L507) and [`launch_engine`](https://github.com/sgl-project/sglang/blob/f8b0326934bacb7a7d4eba68fb6eddebaa6ff751/python/sglang/srt/server.py#L418), are in [server.py](https://github.com/sgl-project/sglang/blob/f8b0326934bacb7a7d4eba68fb6eddebaa6ff751/python/sglang/srt/server.py). The `launch_engine` function initializes core SRT Server components.
 
