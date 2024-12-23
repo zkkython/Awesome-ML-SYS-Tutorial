@@ -507,7 +507,7 @@ print(result)  # 输出 2
 
 ### colocate 的资源分配策略
 
-OpenRLHF 实现了 Actor/Reference，Value/Reward 的 colocate 策略，也即 Actor 和 Reference 会共享同一片计算资源，直观上我几乎省下了一半的显存，直接通过 ``--colocate_actor_ref` 就可以开启。比较有趣的是，开启 colocate 后，实际上资源并不是对半分的，而是：
+OpenRLHF 实现了 Actor/Reference，Value/Reward 的 colocate 策略，也即 Actor 和 Reference 会共享同一片计算资源，直观上我几乎省下了一半的显存，直接通过 `--colocate_actor_ref` 就可以开启。比较有趣的是，开启 colocate 后，实际上资源并不是对半分的，而是：
 
 ```python
     actor_model = PPORayActorGroup(
@@ -529,3 +529,100 @@ OpenRLHF 实现了 Actor/Reference，Value/Reward 的 colocate 策略，也即 A
 
 这里是个 trick，大意是说按照目前的启动逻辑，假设要 actor model 要 data parallelism 占据两张卡，设置 `num_gpus_per_actor=0.5`，则 Ray 先在第一张卡上用 0.5 显存启动了第一个 actor model，接下来要分配第二个占据 0.5 显存的 actor model，Ray 会继续将第二个 actor model 分配到第一张卡上，利用省下的 0.5，而不是第二张卡。所以 colocate 的时候，采取了 `num_gpus_per_actor=0.75, 0.25` 的策略。实际上的显卡并不是对半分的，而且对于只使用一张卡的情况，这种策略不会有影响。
 
+### OpenRLHF 中的 vllm 使用
+
+众所周知，我的一大工作是在 OpenRLHF 系统中支持 SGLang backend，有两个具体的需求：
+
+1. 支持 SGLang 的 inference，确保 accuracy 和 speed 都能对拍；
+2. 将现在的 vllm engine 抽象为一个 inference Engine Backend 类，然后这个 backend 支持 huggingface，SGLang 和 vllm。
+
+根据我一直以来的开发经验，先在这里捋一捋 OpenRLHF 中的所有 vllm 使用。
+
+-----------------
+
+**`openrlhf/cli/batch_inference.py`**
+
+这个文件实现了三个功能，用 vllm 和 transformers 做 generation 以及用 transformers 推理得到 reward。这个做法是非常严谨的，因为 inference engine 在 RLHF 中，目前只能拿去做 generation，生成的 log probs，logits，embedding 和 reward 都是不准的：
+
+> 推理引擎的 kernal fusion 和 training engine 差距不小，batch size 不一样时，推理请求 dispatch 到不同的 kernal 上，然后 numerical 误差逐层累计，到了 log probs 这层就到了不可忽视的程度了。这个问题在 bert 时代就有了，training engine 和 inference engine 的精度差异无法规避，而且全心来搞一两个月可能内都没法修复。
+> 
+> 所以现在推理引擎在 RLHF 中更多是加速 sampling，reward 和 embedding 还得用训练脚本来算，可能得半年后花好几个月研究研究这个问题。
+
+这三个函数还是非常简单，由于我描述过，要做一个统一的 backend，所以这个 file 大致的修改思路是开一个新的 class GenerationBackend，在 GenerationBackend 里面做一个 branch，实现 SGLang, vllm 和 transformers 的 inference。我先抓紧写一个这个 PR 出来。
+
+写到这里，我才发现一个惊人的事情，OpenRLHF 没有单测。我先测测这个系统的可用性，参考这个 `examples/scripts/train_rejection_sampling_llama.sh`：
+
+```bash
+# For vllm
+export VLLM_WORKER_MULTIPROC_METHOD=spawn
+
+mkdir -p ./checkpoint/llama-3-8b-rejection
+GENERATE_OUTPUT=./checkpoint/llama-3-8b-rejection/generate.jsonl
+RM_OUTPUT=./checkpoint/llama-3-8b-rejection/rm.jsonl
+ITER_LOG_PATH=./checkpoint/llama-3-8b-rejection/iter.log
+MODEL_OUTPUT_PATH=./checkpoint/llama-3-8b-rejection
+
+TRAINING_ITERS=10
+ROLLOUT_BATCH_SIZE=10240
+
+POLICY_MODEL_PATH=OpenRLHF/Llama-3-8b-sft-mixture
+
+iter=0
+
+python batch_inference.py \
+   --eval_task generate_vllm \
+   --pretrain $POLICY_MODEL_PATH \
+   --bf16 \
+   --max_new_tokens 2048 \
+   --prompt_max_len 2048 \
+   --dataset OpenRLHF/prompt-collection-v0.1 \
+   --input_key context_messages \
+   --apply_chat_template \
+   --temperature 0.9 \
+   --zero_stage 0 \
+   --best_of_n 4 \
+   --enable_prefix_caching \
+   --tp_size 2 \
+   --max_num_seqs 64 \
+   --iter $iter \
+   --rollout_batch_size $ROLLOUT_BATCH_SIZE \
+   --output_path $GENERATE_OUTPUT \
+   --max_samples 200
+```
+
+```bash
+# For SGLang
+
+mkdir -p ./checkpoint/llama-3-8b-rejection
+GENERATE_OUTPUT=./checkpoint/llama-3-8b-rejection/generate.jsonl
+RM_OUTPUT=./checkpoint/llama-3-8b-rejection/rm.jsonl
+ITER_LOG_PATH=./checkpoint/llama-3-8b-rejection/iter.log
+MODEL_OUTPUT_PATH=./checkpoint/llama-3-8b-rejection
+
+TRAINING_ITERS=10
+ROLLOUT_BATCH_SIZE=10240
+
+POLICY_MODEL_PATH=OpenRLHF/Llama-3-8b-sft-mixture
+
+iter=0
+
+python batch_inference.py \
+   --eval_task generate_sglang \
+   --pretrain $POLICY_MODEL_PATH \
+   --bf16 \
+   --max_new_tokens 2048 \
+   --prompt_max_len 2048 \
+   --dataset OpenRLHF/prompt-collection-v0.1 \
+   --input_key context_messages \
+   --apply_chat_template \
+   --temperature 0.9 \
+   --zero_stage 0 \
+   --best_of_n 4 \
+   --enable_prefix_caching \
+   --tp_size 2 \
+   --max_num_seqs 64 \
+   --iter $iter \
+   --rollout_batch_size $ROLLOUT_BATCH_SIZE \
+   --output_path $GENERATE_OUTPUT \
+   --max_samples 200
+```
