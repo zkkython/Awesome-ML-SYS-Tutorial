@@ -1,6 +1,8 @@
-# 基于 OpenRLHF 上手 RLHF 计算流
+# 梳理 RLHF 的计算特效
 
 将 SGLang 接入到 OpenRLHF 中的事情已经做了好几周了，然而非常惭愧，我直到昨天才算是人生第一次用 OpenRLHF 跑了一个完整的 RLHF 流程。仅仅跑起来就遇到了不少坑，这里先记录下，此后不断更新一些 RLHF 的计算特性。**Github 的 markdown 公式渲染实在太烂了，建议 clone 下来本地看。**
+
+【PS：此文是我的学习 + debug 笔记，我的学习笔记一贯非常清晰，但是 debug 的时候常常情绪激动，在我的行文中也有所体现...我并不打算把这样的情绪删去，我不想为了冷冰的科研结果，而失去我鲜活的真性情。】
 
 ## Quick Start
 
@@ -11,7 +13,7 @@ OpenRLHF 的文档默认用户都比较理解 RLHF 的流程，所以很多地�
 我一开始误判了 OpenRLHF 的依赖复杂度，选择了用 docker，其实也没差。这是我自己用的 docker 指令：
 
 ```bash
-docker run --runtime=nvidia -it --shm-size="40g" --cap-add=SYS_ADMIN -v $PWD:/openrlhf nvcr.io/nvidia/pytorch:24.07-py3 bash
+docker run --runtime=nvidia -it --shm-size="40g" --cap-add=SYS_ADMIN -v ~/openrlhf nvcr.io/nvidia/pytorch:24.07-py3 bash
 ```
 
 主要是我把原本指令里面的 `--rm` 去掉了，不理解为什么文档加了这个参数，让 docker 容器在退出后自动删除。
@@ -65,7 +67,7 @@ Next steps
 
   To connect to this Ray cluster:
     import ray
-    ray.init(_node_ip_address='172.31.54.252')
+    ray.init(_node_ip_address='172.31.59.18')
 
   To submit a Ray job using the Ray Jobs CLI:
     RAY_ADDRESS='http://127.0.0.1:8265' ray job submit --working-dir . -- python my_script.py
@@ -87,13 +89,14 @@ Next steps
 
 </details>
 
-这里给出了 ray 的 start address，也即  `ray start --address='172.31.54.252:4567'`，注意之后要在 OpenRLHF 的指令中使用这个地址。而后也给出了 ray dashboard 的地址，也即 `127.0.0.1:8265`，登上去可以查看到非常精细的监控信息。
+这里给出了 ray 的 start address，也即  `ray start --address='172.31.59.18:4567'`，注意之后要在 OpenRLHF 的指令中使用这个地址。而后也给出了 ray dashboard 的地址，也即 `127.0.0.1:8265`，登上去可以查看到非常精细的监控信息。
 
 接着，submit 一个 test job，这是我在 3 张 H100 上跑通了的脚本，可以参考。
 
 ```bash
-ray job submit --address="172.31.54.252:4567" \
-   --runtime-env-json='{"working_dir": "/opt/dlami/nvme/chenyang/open-rlhf-sglang"}' \
+# 根据需求，调整 url ray start address, working_dir 和 save_path
+ray job submit --address="172.31.59.18:4567" \
+   --runtime-env-json='{"working_dir": "/opt/dlami/nvme/chenyang/rlhf-ckpt"}' \
    -- python3 -m openrlhf.cli.train_ppo_ray \
    --ref_num_nodes 1 \
    --ref_num_gpus_per_node 1 \
@@ -109,7 +112,7 @@ ray job submit --address="172.31.54.252:4567" \
    --colocate_actor_ref \
    --pretrain OpenRLHF/Llama-3-8b-sft-mixture \
    --reward_pretrain OpenRLHF/Llama-3-8b-rm-mixture \
-   --save_path /opt/dlami/nvme/chenyang/open-rlhf-sglang/examples/checkpoint/llama3-8b-rlhf \
+   --save_path /opt/dlami/nvme/chenyang/rlhf-ckpt/examples/checkpoint/llama3-8b-rlhf \
    --save_steps 100 \
    --micro_train_batch_size 16 \
    --train_batch_size 128 \
@@ -140,6 +143,11 @@ ray job submit --address="172.31.54.252:4567" \
 2. `adam_offload`：将 adam 的优化器 offload 到 CPU 上，显著节省了显存，但是会拖慢训练速度。不开启会在 80G H100 上 OOM。
 3. `max_samples` 是从 `prompt_data` 里面进行采样的最大样本数，其必须大于 `rollout_batch_size`，否则不够一轮 rollout，会报错。
 
+最后，补充下如何将 openrlhf 进程停下，其实非常暴力：
+
+```bash
+pkill -9 -f train_ppo_ray
+```
 ## RLHF 的计算流
 
 在[图解大模型RLHF系列之：人人都能看懂的PPO原理与源码解读](https://zhuanlan.zhihu.com/p/677607581)中已经解释的很清楚了，这里摘录并且总结下，分别会如何计算 critic 和 actor 的 loss。
@@ -529,18 +537,18 @@ OpenRLHF 实现了 Actor/Reference，Value/Reward 的 colocate 策略，也即 A
 
 这里是个 trick，大意是说按照目前的启动逻辑，假设要 actor model 要 data parallelism 占据两张卡，设置 `num_gpus_per_actor=0.5`，则 Ray 先在第一张卡上用 0.5 显存启动了第一个 actor model，接下来要分配第二个占据 0.5 显存的 actor model，Ray 会继续将第二个 actor model 分配到第一张卡上，利用省下的 0.5，而不是第二张卡。所以 colocate 的时候，采取了 `num_gpus_per_actor=0.75, 0.25` 的策略。实际上的显卡并不是对半分的，而且对于只使用一张卡的情况，这种策略不会有影响。
 
-### OpenRLHF 中的 vllm 使用
+## 扩展 OpenRLHF 的推理引擎
 
 众所周知，我的一大工作是在 OpenRLHF 系统中支持 SGLang backend，有两个具体的需求：
 
 1. 支持 SGLang 的 inference，确保 accuracy 和 speed 都能对拍；
 2. 将现在的 vllm engine 抽象为一个 inference Engine Backend 类，然后这个 backend 支持 huggingface，SGLang 和 vllm。
 
-根据我一直以来的开发经验，先在这里捋一捋 OpenRLHF 中的所有 vllm 使用。
+根据我一直以来的开发经验，先在这里捋一捋 OpenRLHF 中的所有 vllm 使用，以此来实现统一的 backend。
 
 -----------------
 
-**`openrlhf/cli/batch_inference.py`**
+### **`openrlhf/cli/batch_inference.py`**
 
 这个文件实现了三个功能，用 vllm 和 transformers 做 generation 以及用 transformers 推理得到 reward。这个做法是非常严谨的，因为 inference engine 在 RLHF 中，目前只能拿去做 generation，生成的 log probs，logits，embedding 和 reward 都是不准的：
 
@@ -550,7 +558,10 @@ OpenRLHF 实现了 Actor/Reference，Value/Reward 的 colocate 策略，也即 A
 
 这三个函数还是非常简单，由于我描述过，要做一个统一的 backend，所以这个 file 大致的修改思路是开一个新的 class GenerationBackend，在 GenerationBackend 里面做一个 branch，实现 SGLang, vllm 和 transformers 的 inference。我先抓紧写一个这个 PR 出来。
 
-写到这里，我才发现一个惊人的事情，OpenRLHF 没有单测。我先测测这个系统的可用性，参考这个 `examples/scripts/train_rejection_sampling_llama.sh`：
+写到这里，我才发现一个惊人的事情，OpenRLHF 没有单测。我先测测这个系统的可用性，参考这个 `examples/scripts/train_rejection_sampling_llama.sh`，写一个对拍单侧：
+
+<details>
+<summary> 对拍单测 </summary>
 
 ```bash
 # For vllm
@@ -626,3 +637,78 @@ python batch_inference.py \
    --output_path $GENERATE_OUTPUT \
    --max_samples 200
 ```
+
+</details>
+
+
+写完我才发现，sglang vllm 还有 openrlhf 有着不可调和冲突，sglang 和 vllm 的 torch 依赖不同，而且目前无法修复，我尝试了诸多 vllm 版本都无法解决这个问题。只能在这里开始 diverge 出两个环境。使用两个环境而不是两个 docker 是因为我还没习惯 docker 的映射，不想重设系统变量了。
+
+装环境其实比较痛苦，sglang 的环境对着文档装了半天还有点问题，只能手动装一堆东西，我都惊奇这文档不是我自己写的么，怎么感觉我一边装都不顺利。不过也没用户提，所以先不管了。至于 openrlhf 和 vllm，按着最开始描述的，先安装 openrlhf，再安装 ray，最后安装 vllm。这么搞了半天，发现新的集群 torch 的 nvidia link 一直失败，几年之后，我又一次遇到了[这个问题](https://github.com/pytorch/pytorch/issues/111469)。
+
+想要获得一个稳定的开发环境，非常麻烦...这里列举下这个 bug 和解决过程。
+
+1. 发现 torch 的链接一直有问题，我按照[这个 issue](https://github.com/pytorch/pytorch/issues/111469) 等一系列方法改了 `LD_LIBRARY_PATH`，试过 docker 和 conda 等等各种环境，还是 torch 2.5.1 的链接有问题：
+
+```bash
+ImportError: /usr/local/lib/python3.10/dist-packages/flash_attn_2_cuda.cpython-310-x86_64-linux-gnu.so: undefined symbol: _ZN3c105ErrorC2ENS_14SourceLocationENSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEE
+```
+
+2. 我发现，ray submit 的 job 有这个问题，但是 ipython 里面没问题。进一步缩小范围，我发现 `python -c` 都没问题，那么问题在哪儿呢？
+
+3. 问了 claude，是 ray 环境的问题：
+
+<details>
+<summary> claude 的回答 </summary>
+
+> 不是，凭什么他妈的 python -c 可以 import，但是 ray submit 的就不行？
+
+啊，这是一个很典型的环境变量继承问题。
+
+当你在本地终端执行 `python -c` 时，它继承了你在 `.zshrc` 中设置的所有环境变量（包括 `LD_LIBRARY_PATH`）。但是当通过 ray submit 提交任务时，这些环境变量可能没有被正确传递到 ray worker 进程中。
+
+建议尝试以下解决方案：
+
+1. 在 ray 任务中显式设置环境变量：
+```python
+import os
+os.environ["LD_LIBRARY_PATH"] = "/opt/dlami/nvme/chenyang/.miniconda3/envs/rlhf-vllm/lib/python3.11/site-packages/nvidia/cusparse/lib"
+```
+
+2. 或者在 ray.init() 时通过 runtime_env 传递：
+```python
+ray.init(runtime_env={
+    "env_vars": {
+        "LD_LIBRARY_PATH": "/opt/dlami/nvme/chenyang/.miniconda3/envs/rlhf-vllm/lib/python3.11/site-packages/nvidia/cusparse/lib"
+    }
+})
+```
+
+3. 如果使用 ray submit，可以在提交脚本中添加：
+```bash
+export RAY_RUNTIME_ENV='{"env_vars": {"LD_LIBRARY_PATH": "/opt/dlami/nvme/chenyang/.miniconda3/envs/rlhf-vllm/lib/python3.11/site-packages/nvidia/cusparse/lib"}}'
+ray submit script.py
+```
+
+这样应该能确保环境变量被正确传递到 ray worker 中。
+
+
+</details>
+
+问题解决，我在 `.zshrc` 里面写成这样：
+
+```bash
+export LD_LIBRARY_PATH=/opt/dlami/nvme/chenyang/.miniconda3/envs/rlhf-vllm/lib/python3.11/site-packages/nvidia/cusparse/lib
+export RAY_RUNTIME_ENV='{"env_vars": {"LD_LIBRARY_PATH": "/opt/dlami/nvme/chenyang/.miniconda3/envs/rlhf-vllm/lib/python3.11/site-packages/nvidia/cusparse/lib"}}'
+```
+
+
+很烦，你看我和 claude 对话都快直接骂人了。今天看上去做了很多事情，实际上总觉得在原地踏步：
+
+1. 发现最新的 vllm, sglang 和 openrlhf 的依赖冲突目前没法解决，不单单是 outlines 的问题，更深层是 torch 的问题。我又尝试用 vllm 0.6.3.post1 和 vllm 0.6.4.post1，看看能不能兼容，结果只有 vllm 0.6.5 的 `update_weights_from_distritbued` 在当时的环境里成功了，其他版本都不行，又用了一个小时。 
+2. 没法了，尝试 diverge 环境，却发现第一个集群在写入时崩了，天知道是不是我干的，可我从来不写入到 `/home` 啊。
+3. 切换集群，修改若干多配置，终于把另一台 H100 设置好了。接着发现了天使的 torch link error。尝试各种办法 de 了 2h，先用 conda 开新环境，再用 docker 试图绕过 torch link，发现无果，非常绝望。
+4. 在群里给大家汇报问题，顺带试了试 `python -c`，看看会不会 error。发现没有，终于问了 claude，发现了 ray 的环境变量问题。要是没有现代 LLM，这 bug 回到两年前真的会让我自闭，又想起了疫情期间我在紫二 308 对着商汤的集群配置 deepspeed 的痛苦，兜兜转转又回到了这种境遇。
+5. 其实还遇到一些问题，总体上是我没有耐心，比如观察到 openrlhf 的进程卡在了 DeepSpeedEngine compile 上，我就会停掉重开。事后发现，其实第一次就是要等很久。郭磊一会儿，我的 training 又卡住了，这次卡在 vllm broadcast weights 上。说实话，我有点崩溃，因为我知道这个 broadcast 不会花费那么久，之前调成 0.6.5 可以，现在不行了。我又再重装一次环境，因为之前一模一样的问题都是这样解决的。
+6. 还是不对，问了 OpenRLHF 作者，说是 vllm 更新又搞崩了，weights update 的 bug 又出现了。这才发现，大家都焦头烂额的，这就是 mlsys 的常态吧...他建议我用 openrlhf 的稳定版本，别用 main。我换到 0.5.4，还是崩了。
+
+不说了，终于搞到了一个稳定的开发环境，明天去 review 朋友给我的 PR，然后在之前给 OpenRLHF 的 PR 上说明目前的情况。**今天把之前删了的 lolm 下载了回来，妈的，lolm 启动。这 lolm 里面有 llm，真是天意。**
