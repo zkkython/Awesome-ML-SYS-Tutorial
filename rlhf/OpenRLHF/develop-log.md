@@ -453,6 +453,8 @@ PPO 可能是我觉得 openrlhf 最重要的 training 脚本，也是我之前�
 
 - **`llm.generate`**
 
+【TODO】
+
 首先，原先的：
 
 ```python
@@ -507,29 +509,21 @@ max_output_len = max(len(output_id) for output_id in output_token_id_list)
 ```
 </details>
 
-不得不说原本那个遍历列表取最大值的操作让我有点没绷住，用列表推导是很基本的 pythonic 操作了。
-
-【TODO】
-
-我确信这种改动是完全等价的，毕竟要是这种等价替换都做不好，本科抄的四年代码，早该毕不了业了...
-
-然而，令我费解的是，虽然如此改动在我看来等价，为什么会出现卡顿呢？我没有测试过 main，是否是 main 本身就有问题。于是，我又有了一个 TODO：
+不得不说原本那个遍历列表取最大值的操作确实不太科学，用列表推导是很基本的 pythonic 操作了。我确信这种改动是完全等价的，毕竟要是这种等价替换都做不好，本科抄的四年代码，早该毕不了业了...然而，令我费解的是，虽然如此改动在我看来等价，为什么会出现  nccl hang 呢？我没有测试过 main，是否是 main 本身就有问题。于是，我又有了一个 TODO：
 
 - 测试 main 上是否也会卡顿？
 
 ### `openrlhf/trainer/ray/ppo_actor.py`
 
-这个文件除开命名之外，我几乎没有什么改动。有个值得注意的地方是，我把 `init_process_group` 的 backend 统一改为了 `nccl`，因为某一次出现了 process group 创立错误，但是 `nccl` 做 backend 是稳定的。难道这是造成不稳的原因：
+这个文件除开命名之外，我几乎没有什么改动。有个值得注意的地方是，我把 `init_process_group` 的 backend 从 `gloo` 统一改为了 `nccl`，因为某一次出现了 process group 创立错误，但是 `nccl` 做 backend 是稳定的。难道这是造成不稳的原因：
 
 - 测试是否是 backend 的问题？
 
 ### `openrlhf/trainer/ray/vllm_engine.py`
 
-这是最大的改动，道理很简单，就是在这个文件下面加入 branch，然后根据 backend 选择不同的 engine。我还没有来得及修改文件名，按理说要改成 `inference_engine.py`。不过这些问题之后解决都好...
+这是最大的改动，道理很简单，粗糙的改法就是就是在这个文件下面加入 branch，根据 backend 选择不同的 engine。我还没有来得及修改文件名，按理说要改成 `inference_engine.py`。不过这些问题之后解决都好...
 
-vllm 的地方不用改，只是移动到 if 下面就行，但是 sglang 的地方得改动不少，主要是 `LLMRayActor` 的 `__init__` 传入的是 `*args, **kwargs`，直接对着 vllm 的 server args 在启动，如果我直接传给 `sglang.Engine`，会因为位置参数匹配不上而报错。
-
-所以，我得找寻 sglang 和 vllm 的对应参数，但是这个事情在 [batch_inference.py](#openrlhfclibatch_inferencepy) 里面已经做过了，我怀疑可能也有错。这里记录下我的做法：
+vllm 的地方不用改，只是移动到 if 下面就行，但是 sglang 的地方得改动不少，主要是 `LLMRayActor` 的 `__init__` 传入的是 `*args, **kwargs`，直接对着 vllm 的 server args 在启动，如果我直接传给 `sglang.Engine`，会因为位置参数匹配不上而报错。所以，我得找寻 sglang 和 vllm 的对应参数，但是这个事情在 [batch_inference.py](#openrlhfclibatch_inferencepy) 里面已经做过了，我怀疑可能也有错。这里记录下我的做法：
 
 <details>
 <summary> 从 vllm 到 sglang 的 server args 映射 </summary>
@@ -537,6 +531,7 @@ vllm 的地方不用改，只是移动到 if 下面就行，但是 sglang 的地
 这是 vllm 的 server parameters：
 
 ```python
+#   Pretrain 是 model path，这名字怪抽象的
 pretrain,
 noset_visible_devices=noset_visible_devices,
 trust_remote_code=True,
@@ -549,7 +544,7 @@ max_model_len=max_model_len,
 backend=backend,
 ```        
 
-其中 pretrain 是 model path，而这是我在 sglang 里的映射：
+这是我在 sglang 里的映射：
 
 ```python
 #! TODO chenyang check engine params
@@ -664,14 +659,14 @@ elif self.backend == "sglang":
 
 </details>
 
-这里其实我也犯过迷糊，因为一开始 sglang 的 training pipeline 会 OOM，我对比了下 openrlhf 给 vllm 写的 Wrapper，看到他们更新完了参数会 `del weights`，但我在 sglang 里面没有，我以为是因此 sglang 内存泄漏了。实际上不是，python 自己就会做这种函数内的内存回收，实际上 OOM 是从 deepspeed engine 来的。我把 training batch size 减小，就不会 OOM 了。这里其实还是前面提到的那个猜想，是否是因为 sglang 给出的 token ids 矩阵太大了，直接导致了 OOM？
+这里其实我也犯过迷糊，因为一开始 sglang 的 training pipeline 会 OOM，我对比了下 openrlhf 给 vllm 写的 Wrapper，看到他们更新完了参数会 `del weights`，但我在 sglang 里面没有，我以为是因此 sglang 内存泄漏了。实际上不是，python 自己就会做这种函数内的内存回收，实际上 OOM 是从 deepspeed engine 来的。我把 training batch size 减小，就不会 OOM 了。这里其实还是前面提到的那个猜想，是否是因为 sglang 给出的 token ids 矩阵有大小区别，直接导致了 OOM？
 
-### 效率波动的猜想
+### NCCL Hang 的猜想
 
 如我前面所述，在我看来，我的修改都是完全等价的，倘若 sglang engine 和 vllm engine works functionally equivalent，那么不该有任何区别。不过，我坚信两个框架都是无数用户使用后已经非常稳定的产品，差别大概率来自我没有注意到的不等价映射，特别是 serving params 和 sampling params 的映射。这里总结下我所有的猜想和 TODO：
 
 1. 直接传入 token ids 给 sglang，不要再对 prompts tokenize 一次了。
-2. 打印出 tokens 的开始和结尾，用于检查 vllm 和 sglang 处理特殊 token 是否有区别。
+2. 打印出 tokens 的开始和结尾，检查 vllm 和 sglang 处理特殊 token 是否有区别。
 3. 打印出传入给 experience making 的 tokens 矩阵大小，难道二者的矩阵大小差异（譬如最长的 string 特别长导致 padding 后差异特别大）会有显著影响么？
 4. 测试 main 上是否也会卡顿？
 5. 测试是否是 backend 的问题？
@@ -682,12 +677,14 @@ elif self.backend == "sglang":
 10. all_prompt_tokens 和 input token ids in engine outputs 的区别。
 11. 打印下每个 training step 的 input tensor size 和 时间，检查下为什么有的地方卡一个小时。
 
-## 对拍
+这么多猜想，其实 print 就可以验证很多，所以我打了非常详细的 log，直接 print 到指甲缝里面。
+
+## 对拍指令
 
 ### 启动 ray 集群
 
 <details>
-<summary> launch ray 在 NV 01 上的 docker</summary>
+<summary> launch ray</summary>
 
 ```bash
 al 6
@@ -700,10 +697,6 @@ pkill -9 -f train_ppo_ray
 
 rm -rf /root/rlhf-ckpt/*
 ```
-</details>
-
-<details>
-<summary> launch ray 在 NV 02 上不用 docker</summary>
 
 ```bash
 al 6
@@ -716,13 +709,13 @@ pkill -9 -f train_ppo_ray
 
 rm -rf /opt/dlami/nvme/chenyang/rlhf-ckpt/*
 ```
-
 </details>
 
-### 100k 对拍在 NV 01 使用 Docker
+### NV 01 100k
 
-<details>
-<summary> 100k 对拍 </summary>
+<details> 
+
+<summary>  在 NV 01 的 docker 上使用 100k 样本进行对拍 </summary>
 
 ```bash
 # conda activate rlhf-sglang
@@ -843,11 +836,13 @@ ray job submit --address="172.17.0.3:1234" \
    --wandb_project openrlhf \
    --wandb_run_name vllm-$TIME >> ~/log/vllm-$TIME.log
 ```
-
 </details>
 
-### 100k 在 NV 02 非 docker 对拍
+### NV 02 100k
 
+<details> 
+
+<summary> 在 NV 02 上直接使用 100k 样本进行对拍 </summary>
 
 ```bash
 # conda activate rlhf-sglang
@@ -971,23 +966,136 @@ ray job submit --address="172.31.59.18:1234" \
 
 </details>
 
-### 512 作为单测
-
-```bash
-
-al 3
-
-ray stop
-
-ray start --head --node-ip-address 127.0.0.1 --num-gpus 3 --port 1234 --temp-dir="/opt/dlami/nvme/chenyang/.cache/ray"
-
-pkill -9 -f train_ppo_ray
-
-rm -rf /opt/dlami/nvme/chenyang/rlhf-ckpt/*
-```
+### NV 01 512
 
 <details>
-<summary> 512 对拍单测 </summary>
+<summary> 在 NV 01 的 docker 上使用 512 个样本进行单测 </summary>
+
+```bash
+rlhf-sglang
+
+TIME=$(now)
+
+echo $TIME
+
+ray job submit --address="172.17.0.3:1234" \
+   --runtime-env-json='{
+     "working_dir": "/root/rlhf-ckpt",
+     "env_vars": {
+       "PYTHONPATH": "/root/miniconda3/envs/rlhf-sglang/lib/python3.11/site-packages"
+     }
+   }' \
+   -- python3 -m openrlhf.cli.train_ppo_ray \
+   --backend vllm \
+   --ref_num_nodes 1 \
+   --ref_num_gpus_per_node 1 \
+   --reward_num_nodes 1 \
+   --reward_num_gpus_per_node 1 \
+   --critic_num_nodes 1 \
+   --critic_num_gpus_per_node 1 \
+   --actor_num_nodes 1 \
+   --actor_num_gpus_per_node 1 \
+   --vllm_num_engines 1 \
+   --vllm_tensor_parallel_size 1 \
+   --colocate_critic_reward \
+   --colocate_actor_ref \
+   --pretrain OpenRLHF/Llama-3-8b-sft-mixture \
+   --reward_pretrain OpenRLHF/Llama-3-8b-rm-mixture \
+   --save_path /root/rlhf-ckpt/examples/checkpoint-sglang-$(now)/llama3-8b-rlhf \
+   --save_steps 10 \
+   --micro_train_batch_size 16 \
+   --train_batch_size 128 \
+   --micro_rollout_batch_size 32 \
+   --rollout_batch_size 128 \
+   --max_samples 512 \
+   --max_epochs 1 \
+   --prompt_max_len 1024 \
+   --generate_max_len 1024 \
+   --zero_stage 3 \
+   --bf16 \
+   --actor_learning_rate 5e-7 \
+   --critic_learning_rate 9e-6 \
+   --init_kl_coef 0.01 \
+   --prompt_data OpenRLHF/prompt-collection-v0.1 \
+   --input_key context_messages \
+   --apply_chat_template \
+   --packing_samples \
+   --normalize_reward \
+   --adam_offload \
+   --flash_attn \
+   --gradient_checkpointing \
+   --use_wandb $WANDB_API_KEY \
+   --wandb_run_name sglang-$TIME \
+   --wandb_project openrlhf >> ~/log/sglang-$TIME.log
+```
+
+
+```bash
+rlhf-vllm
+
+TIME=$(now)
+
+echo $TIME
+
+ray job submit --address="172.17.0.3:1234" \
+   --runtime-env-json='{
+     "working_dir": "/root/rlhf-ckpt",
+     "env_vars": {
+       "PYTHONPATH": "/root/miniconda3/envs/rlhf-vllm/lib/python3.11/site-packages"
+     }
+   }' \
+   -- python3 -m openrlhf.cli.train_ppo_ray \
+   --backend vllm \
+   --ref_num_nodes 1 \
+   --ref_num_gpus_per_node 1 \
+   --reward_num_nodes 1 \
+   --reward_num_gpus_per_node 1 \
+   --critic_num_nodes 1 \
+   --critic_num_gpus_per_node 1 \
+   --actor_num_nodes 1 \
+   --actor_num_gpus_per_node 1 \
+   --vllm_num_engines 1 \
+   --vllm_tensor_parallel_size 1 \
+   --colocate_critic_reward \
+   --colocate_actor_ref \
+   --pretrain OpenRLHF/Llama-3-8b-sft-mixture \
+   --reward_pretrain OpenRLHF/Llama-3-8b-rm-mixture \
+   --save_path /root/rlhf-ckpt/examples/checkpoint-vllm-$(now)/llama3-8b-rlhf \
+   --save_steps 10 \
+   --micro_train_batch_size 16 \
+   --train_batch_size 128 \
+   --micro_rollout_batch_size 32 \
+   --rollout_batch_size 128 \
+   --max_samples 512 \
+   --max_epochs 1 \
+   --prompt_max_len 1024 \
+   --generate_max_len 1024 \
+   --zero_stage 3 \
+   --bf16 \
+   --actor_learning_rate 5e-7 \
+   --critic_learning_rate 9e-6 \
+   --init_kl_coef 0.01 \
+   --prompt_data OpenRLHF/prompt-collection-v0.1 \
+   --input_key context_messages \
+   --apply_chat_template \
+   --packing_samples \
+   --normalize_reward \
+   --adam_offload \
+   --flash_attn \
+   --gradient_checkpointing \
+   --use_wandb $WANDB_API_KEY \
+   --wandb_run_name vllm-$TIME \
+   --wandb_project openrlhf >> ~/log/vllm-$TIME.log
+```
+
+</details>
+
+
+### NV 02 512
+
+<details>
+
+<summary> 在 NV 02 上直接使用 512 个样本进行单测 </summary>
 
 ```bash
 rlhf-sglang
@@ -998,7 +1106,7 @@ echo $TIME
 
 ray job submit --address="172.31.59.18:1234" \
    --runtime-env-json='{
-     "working_dir": "/root/rlhf-ckpt",
+     "working_dir": "/opt/dlami/nvme/chenyang/rlhf-ckpt",
      "env_vars": {
        "PYTHONPATH": "/opt/dlami/nvme/chenyang/.miniconda3/envs/rlhf-sglang/lib/python3.11/site-packages"
      }
@@ -1054,11 +1162,11 @@ TIME=$(now)
 
 echo $TIME
 
-ray job submit --address="172.17.0.3:1234" \
+ray job submit --address="172.31.59.18:1234" \
    --runtime-env-json='{
-     "working_dir": "/root/rlhf-ckpt",
+     "working_dir": "/opt/dlami/nvme/chenyang/rlhf-ckpt",
      "env_vars": {
-       "PYTHONPATH": "/root/.miniconda3/envs/rlhf-vllm/lib/python3.11/site-packages"
+       "PYTHONPATH": "/opt/dlami/nvme/chenyang/.miniconda3/envs/rlhf-vllm/lib/python3.11/site-packages"
      }
    }' \
    -- python3 -m openrlhf.cli.train_ppo_ray \
@@ -1077,7 +1185,7 @@ ray job submit --address="172.17.0.3:1234" \
    --colocate_actor_ref \
    --pretrain OpenRLHF/Llama-3-8b-sft-mixture \
    --reward_pretrain OpenRLHF/Llama-3-8b-rm-mixture \
-   --save_path /root/rlhf-ckpt/examples/checkpoint-vllm-$(now)/llama3-8b-rlhf \
+   --save_path /opt/dlami/nvme/chenyang/rlhf-ckpt/examples/checkpoint-vllm-$(now)/llama3-8b-rlhf \
    --save_steps 10 \
    --micro_train_batch_size 16 \
    --train_batch_size 128 \
@@ -1107,7 +1215,7 @@ ray job submit --address="172.17.0.3:1234" \
 
 </details>
 
-### main 上的测试
+### main 100k
 
 <details>
 <summary> main 上的测试 </summary>
@@ -1182,69 +1290,3 @@ ray job submit --address="172.31.59.18:1234" \
 ```
 
 </details>
-
-### 100k 在 8 卡 A6000 上对拍
-
-```bash
-
-al 8
-
-ray stop
-
-ray start --head --node-ip-address 127.0.0.1 --num-gpus 8 --port 3456 --temp-dir="/data/chenyang/.cache/ray"
-
-pkill -9 -f train_ppo_ray
-
-rm -rf /data/chenyang/rlhf-ckpt/*
-```
-
-```bash
-
-rlhf-vllm
-
-TIME=$(now)
-
-ray job submit --address="http://131.179.88.84:3456" \
-   --runtime-env-json='{"working_dir": "/data/chenyang/rlhf-ckpt"}' \
-   -- python3 -m openrlhf.cli.train_ppo_ray \
-   --backend vllm \
-   --ref_num_nodes 1 \
-   --ref_num_gpus_per_node 2 \
-   --reward_num_nodes 1 \
-   --reward_num_gpus_per_node 2 \
-   --critic_num_nodes 1 \
-   --critic_num_gpus_per_node 2 \
-   --actor_num_nodes 1 \
-   --actor_num_gpus_per_node 2 \
-   --vllm_num_engines 2 \
-   --vllm_tensor_parallel_size 2 \
-   --colocate_critic_reward \
-   --colocate_actor_ref \
-   --pretrain OpenRLHF/Llama-3-8b-sft-mixture \
-   --reward_pretrain OpenRLHF/Llama-3-8b-rm-mixture \
-   --save_path /data/chenyang/rlhf-ckpt/examples/checkpoint/llama3-8b-rlhf \
-   --micro_train_batch_size 8 \
-   --train_batch_size 64 \
-   --micro_rollout_batch_size 32 \
-   --rollout_batch_size 1024 \
-   --max_samples 100000 \
-   --max_epochs 2 \
-   --prompt_max_len 1024 \
-   --generate_max_len 1024 \
-   --zero_stage 3 \
-   --bf16 \
-   --actor_learning_rate 5e-7 \
-   --critic_learning_rate 9e-6 \
-   --init_kl_coef 0.01 \
-   --prompt_data OpenRLHF/prompt-collection-v0.1 \
-   --input_key context_messages \
-   --apply_chat_template \
-   --packing_samples \
-   --normalize_reward \
-   --adam_offload \
-   --flash_attn \
-   --gradient_checkpointing \
-   --use_wandb $WANDB_API_KEY \
-   --wandb_run_name vllm-8a6000-$TIME \
-   --wandb_project openrlhf >> ~/log/vllm-8a6000-$TIME.log
-```
