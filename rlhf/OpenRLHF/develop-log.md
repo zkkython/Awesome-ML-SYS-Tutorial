@@ -13,7 +13,8 @@ OpenRLHF 的文档默认用户都比较理解 RLHF 的流程，所以很多地�
 我一开始误判了 OpenRLHF 的依赖复杂度，猜测应该非常高，所以选择了 docker。事后发现，其实只是需要 deepspeed vllm 和 openrlhf 在一块儿就行了。不过，这里还是分享下我自己用的 docker 指令：
 
 ```bash
-docker run --runtime=nvidia -it --shm-size="40g" --cap-add=SYS_ADMIN -v ~/openrlhf nvcr.io/nvidia/pytorch:24.07-py3 bash
+docker run --runtime=nvidia -it --shm-size="40g" --cap-add=SYS_ADMIN   -v /opt/dlami/nvme/chenyang:/var/lib/docker   
+nvcr.io/nvidia/pytorch:24.07-py3 bash
 ```
 
 我把[原文档指令](https://openrlhf.readthedocs.io/en/latest/quick_start.html#installation)里面的 `--rm` 去掉了，不理解为什么要加这个参数，导致 docker 容器在退出后自动删除。
@@ -32,7 +33,7 @@ pip uninstall xgboost transformer_engine flash_attn -y
 
 这个发行版可能偶尔会被取消，也可以直接安装最新发行的 openrlhf 和 vllm 的指定版本，前者版本无所谓，后者得从 OpenRLHF 的依赖中查找所支持的版本，最新的 vllm 不一定支持，我是用的是 0.6.4.post1。
 
-用 docker 的话，接着可以把 docker commit 保存下来，`docker ps -a` 查找 `<container_id>`，然后 `docker commit <container_id> openrlhf`，下次直接 `docker run -it openrlhf` 就可以直接进入 docker 了。
+用 docker 的话，接着可以把 docker commit 保存下来，`docker ps -a` 查找 `<container_id>`，然后 `docker commit <container_id> openrlhf_chenyang`，下次直接 `docker run --gpus all -it openrlhf_chenyang` 就可以直接进入 docker 了。
 
 最后配置 `wandb`，老实说我都有快两年没碰过这玩意儿了，越发觉得除了监控训练曲线之外，意义不大。OpenRLHF 可以基于 ray 使用，而 ray 有一套自己 prometheus 的监控，可以直接用 ray dashboard 查看 log，当然，要配置 `wandb` 也不麻烦，`wandb init` 一通操作就好了。
 
@@ -691,23 +692,11 @@ al 6
 
 ray stop
 
-ray start --head --node-ip-address 127.0.0.1 --num-gpus 6 --port 1234 --temp-dir="/root/.cache/ray"
+ray start --head --node-ip-address 127.0.0.1 --num-gpus 6 --port 1234 --temp-dir=$RAY_TEMP_DIR
 
 pkill -9 -f train_ppo_ray
 
-rm -rf /root/rlhf-ckpt/*
-```
-
-```bash
-al 6
-
-ray stop
-
-ray start --head --node-ip-address 127.0.0.1 --num-gpus 6 --port 1234 --temp-dir="/opt/dlami/nvme/chenyang/.cache/ray"
-
-pkill -9 -f train_ppo_ray
-
-rm -rf /opt/dlami/nvme/chenyang/rlhf-ckpt/*
+rm -rf $RLHF_CKPT_DIR/*
 ```
 </details>
 
@@ -726,13 +715,13 @@ TIME=$(now)
 
 echo $TIME
 
-ray job submit --address="172.17.0.3:1234" \
-   --runtime-env-json='{
-     "working_dir": "/root/rlhf-ckpt",
-     "env_vars": {
-       "PYTHONPATH": "/root/miniconda3/envs/rlhf-sglang/lib/python3.11/site-packages"
-     }
-   }' \
+ray job submit --address="172.17.0.2:1234" \
+--runtime-env-json="{
+  \"working_dir\": \"${RLHF_CKPT_DIR}\",
+  \"env_vars\": {
+    \"PYTHONPATH\": \"/root/miniconda3/envs/rlhf-sglang/lib/python3.11/site-packages\"
+  }
+}" \
    -- python3 -m openrlhf.cli.train_ppo_ray \
    --backend sglang \
    --ref_num_nodes 1 \
@@ -749,7 +738,7 @@ ray job submit --address="172.17.0.3:1234" \
    --colocate_actor_ref \
    --pretrain OpenRLHF/Llama-3-8b-sft-mixture \
    --reward_pretrain OpenRLHF/Llama-3-8b-rm-mixture \
-   --save_path /root/rlhf-ckpt/examples/checkpoint-sglang-$(now)/llama3-8b-rlhf \
+   --save_path ${RLHF_CKPT_DIR}/examples/checkpoint-sglang-$(now)/llama3-8b-rlhf \
    --save_steps 5 \
    --micro_train_batch_size 8 \
    --train_batch_size 64 \
@@ -978,139 +967,13 @@ TIME=$(now)
 
 echo $TIME
 
-ray job submit --address="172.17.0.3:1234" \
-   --runtime-env-json='{
-     "working_dir": "/root/rlhf-ckpt",
-     "env_vars": {
-       "PYTHONPATH": "/root/miniconda3/envs/rlhf-sglang/lib/python3.11/site-packages"
-     }
-   }' \
-   -- python3 -m openrlhf.cli.train_ppo_ray \
-   --backend vllm \
-   --ref_num_nodes 1 \
-   --ref_num_gpus_per_node 1 \
-   --reward_num_nodes 1 \
-   --reward_num_gpus_per_node 1 \
-   --critic_num_nodes 1 \
-   --critic_num_gpus_per_node 1 \
-   --actor_num_nodes 1 \
-   --actor_num_gpus_per_node 1 \
-   --vllm_num_engines 1 \
-   --vllm_tensor_parallel_size 1 \
-   --colocate_critic_reward \
-   --colocate_actor_ref \
-   --pretrain OpenRLHF/Llama-3-8b-sft-mixture \
-   --reward_pretrain OpenRLHF/Llama-3-8b-rm-mixture \
-   --save_path /root/rlhf-ckpt/examples/checkpoint-sglang-$(now)/llama3-8b-rlhf \
-   --save_steps 10 \
-   --micro_train_batch_size 16 \
-   --train_batch_size 128 \
-   --micro_rollout_batch_size 32 \
-   --rollout_batch_size 128 \
-   --max_samples 512 \
-   --max_epochs 1 \
-   --prompt_max_len 1024 \
-   --generate_max_len 1024 \
-   --zero_stage 3 \
-   --bf16 \
-   --actor_learning_rate 5e-7 \
-   --critic_learning_rate 9e-6 \
-   --init_kl_coef 0.01 \
-   --prompt_data OpenRLHF/prompt-collection-v0.1 \
-   --input_key context_messages \
-   --apply_chat_template \
-   --packing_samples \
-   --normalize_reward \
-   --adam_offload \
-   --flash_attn \
-   --gradient_checkpointing \
-   --use_wandb $WANDB_API_KEY \
-   --wandb_run_name sglang-$TIME \
-   --wandb_project openrlhf >> ~/log/sglang-$TIME.log
-```
-
-
-```bash
-rlhf-vllm
-
-TIME=$(now)
-
-echo $TIME
-
-ray job submit --address="172.17.0.3:1234" \
-   --runtime-env-json='{
-     "working_dir": "/root/rlhf-ckpt",
-     "env_vars": {
-       "PYTHONPATH": "/root/miniconda3/envs/rlhf-vllm/lib/python3.11/site-packages"
-     }
-   }' \
-   -- python3 -m openrlhf.cli.train_ppo_ray \
-   --backend vllm \
-   --ref_num_nodes 1 \
-   --ref_num_gpus_per_node 1 \
-   --reward_num_nodes 1 \
-   --reward_num_gpus_per_node 1 \
-   --critic_num_nodes 1 \
-   --critic_num_gpus_per_node 1 \
-   --actor_num_nodes 1 \
-   --actor_num_gpus_per_node 1 \
-   --vllm_num_engines 1 \
-   --vllm_tensor_parallel_size 1 \
-   --colocate_critic_reward \
-   --colocate_actor_ref \
-   --pretrain OpenRLHF/Llama-3-8b-sft-mixture \
-   --reward_pretrain OpenRLHF/Llama-3-8b-rm-mixture \
-   --save_path /root/rlhf-ckpt/examples/checkpoint-vllm-$(now)/llama3-8b-rlhf \
-   --save_steps 10 \
-   --micro_train_batch_size 16 \
-   --train_batch_size 128 \
-   --micro_rollout_batch_size 32 \
-   --rollout_batch_size 128 \
-   --max_samples 512 \
-   --max_epochs 1 \
-   --prompt_max_len 1024 \
-   --generate_max_len 1024 \
-   --zero_stage 3 \
-   --bf16 \
-   --actor_learning_rate 5e-7 \
-   --critic_learning_rate 9e-6 \
-   --init_kl_coef 0.01 \
-   --prompt_data OpenRLHF/prompt-collection-v0.1 \
-   --input_key context_messages \
-   --apply_chat_template \
-   --packing_samples \
-   --normalize_reward \
-   --adam_offload \
-   --flash_attn \
-   --gradient_checkpointing \
-   --use_wandb $WANDB_API_KEY \
-   --wandb_run_name vllm-$TIME \
-   --wandb_project openrlhf >> ~/log/vllm-$TIME.log
-```
-
-</details>
-
-
-### NV 02 512
-
-<details>
-
-<summary> 在 NV 02 上直接使用 512 个样本进行单测 </summary>
-
-```bash
-rlhf-sglang
-
-TIME=$(now)
-
-echo $TIME
-
-ray job submit --address="172.31.59.18:1234" \
-   --runtime-env-json='{
-     "working_dir": "/opt/dlami/nvme/chenyang/rlhf-ckpt",
-     "env_vars": {
-       "PYTHONPATH": "/opt/dlami/nvme/chenyang/.miniconda3/envs/rlhf-sglang/lib/python3.11/site-packages"
-     }
-   }' \
+ray job submit --address="172.17.0.2:1234" \
+--runtime-env-json="{
+  \"working_dir\": \"${RLHF_CKPT_DIR}\",
+  \"env_vars\": {
+    \"PYTHONPATH\": \"/root/miniconda3/envs/rlhf-sglang/lib/python3.11/site-packages\"
+  }
+}" \
    -- python3 -m openrlhf.cli.train_ppo_ray \
    --backend sglang \
    --ref_num_nodes 1 \
@@ -1127,10 +990,10 @@ ray job submit --address="172.31.59.18:1234" \
    --colocate_actor_ref \
    --pretrain OpenRLHF/Llama-3-8b-sft-mixture \
    --reward_pretrain OpenRLHF/Llama-3-8b-rm-mixture \
-   --save_path /opt/dlami/nvme/chenyang/rlhf-ckpt/examples/checkpoint-sglang-$(now)/llama3-8b-rlhf \
-   --save_steps 10 \
-   --micro_train_batch_size 16 \
-   --train_batch_size 128 \
+   --save_path ${RLHF_CKPT_DIR}/examples/checkpoint-sglang-$(now)/llama3-8b-rlhf \
+   --save_steps 5 \
+   --micro_train_batch_size 8 \
+   --train_batch_size 32 \
    --micro_rollout_batch_size 32 \
    --rollout_batch_size 128 \
    --max_samples 512 \
@@ -1155,98 +1018,29 @@ ray job submit --address="172.31.59.18:1234" \
    --wandb_project openrlhf >> ~/log/sglang-$TIME.log
 ```
 
-```bash
-rlhf-vllm
-
-TIME=$(now)
-
-echo $TIME
-
-ray job submit --address="172.31.59.18:1234" \
-   --runtime-env-json='{
-     "working_dir": "/opt/dlami/nvme/chenyang/rlhf-ckpt",
-     "env_vars": {
-       "PYTHONPATH": "/opt/dlami/nvme/chenyang/.miniconda3/envs/rlhf-vllm/lib/python3.11/site-packages"
-     }
-   }' \
-   -- python3 -m openrlhf.cli.train_ppo_ray \
-   --backend vllm \
-   --ref_num_nodes 1 \
-   --ref_num_gpus_per_node 1 \
-   --reward_num_nodes 1 \
-   --reward_num_gpus_per_node 1 \
-   --critic_num_nodes 1 \
-   --critic_num_gpus_per_node 1 \
-   --actor_num_nodes 1 \
-   --actor_num_gpus_per_node 1 \
-   --vllm_num_engines 1 \
-   --vllm_tensor_parallel_size 1 \
-   --colocate_critic_reward \
-   --colocate_actor_ref \
-   --pretrain OpenRLHF/Llama-3-8b-sft-mixture \
-   --reward_pretrain OpenRLHF/Llama-3-8b-rm-mixture \
-   --save_path /opt/dlami/nvme/chenyang/rlhf-ckpt/examples/checkpoint-vllm-$(now)/llama3-8b-rlhf \
-   --save_steps 10 \
-   --micro_train_batch_size 16 \
-   --train_batch_size 128 \
-   --micro_rollout_batch_size 32 \
-   --rollout_batch_size 128 \
-   --max_samples 512 \
-   --max_epochs 1 \
-   --prompt_max_len 1024 \
-   --generate_max_len 1024 \
-   --zero_stage 3 \
-   --bf16 \
-   --actor_learning_rate 5e-7 \
-   --critic_learning_rate 9e-6 \
-   --init_kl_coef 0.01 \
-   --prompt_data OpenRLHF/prompt-collection-v0.1 \
-   --input_key context_messages \
-   --apply_chat_template \
-   --packing_samples \
-   --normalize_reward \
-   --adam_offload \
-   --flash_attn \
-   --gradient_checkpointing \
-   --use_wandb $WANDB_API_KEY \
-   --wandb_run_name vllm-$TIME \
-   --wandb_project openrlhf >> ~/log/vllm-$TIME.log
-```
-
 </details>
 
-### main 100k
+### Hyperbolic 100K
 
 <details>
-<summary> main 上的测试 </summary>
+<summary> Hyperbolic 100K 的测试 </summary>
 
 ```bash
-al 3
-
-ray stop
-
-ray start --head --node-ip-address 127.0.0.1 --num-gpus 3 --port 1234 --temp-dir="/opt/dlami/nvme/chenyang/.cache/ray"
-
-pkill -9 -f train_ppo_ray
-
-rm -rf /opt/dlami/nvme/chenyang/rlhf-ckpt/*
-```
-
-```bash
-rlhf-vllm
+rlhf-sglang
 
 TIME=$(now)
 
 echo $TIME
 
-ray job submit --address="172.31.59.18:1234" \
-   --runtime-env-json='{
-     "working_dir": "/opt/dlami/nvme/chenyang/rlhf-ckpt",
-     "env_vars": {
-       "PYTHONPATH": "/opt/dlami/nvme/chenyang/.miniconda3/envs/rlhf-vllm/lib/python3.11/site-packages"
-     }
-   }' \
+ray job submit --address="172.27.13.23:1234" \
+--runtime-env-json="{
+  \"working_dir\": \"${RLHF_CKPT_DIR}\",
+  \"env_vars\": {
+    \"PYTHONPATH\": \"/data/chayenne/miniconda3/envs/rlhf-sglang/lib/python3.11/site-packages\"
+  }
+}" \
    -- python3 -m openrlhf.cli.train_ppo_ray \
+   --backend sglang \
    --ref_num_nodes 1 \
    --ref_num_gpus_per_node 1 \
    --reward_num_nodes 1 \
@@ -1261,10 +1055,10 @@ ray job submit --address="172.31.59.18:1234" \
    --colocate_actor_ref \
    --pretrain OpenRLHF/Llama-3-8b-sft-mixture \
    --reward_pretrain OpenRLHF/Llama-3-8b-rm-mixture \
-   --save_path /opt/dlami/nvme/chenyang/rlhf-ckpt/examples/checkpoint-vllm-main-$(now)/llama3-8b-rlhf \
+   --save_path ${RLHF_CKPT_DIR}/examples/checkpoint-sglang-hyperbolic-$(now)/llama3-8b-rlhf \
    --save_steps 5 \
    --micro_train_batch_size 8 \
-   --train_batch_size 64 \
+   --train_batch_size 32 \
    --micro_rollout_batch_size 32 \
    --rollout_batch_size 1024 \
    --max_samples 100000 \
@@ -1285,8 +1079,10 @@ ray job submit --address="172.31.59.18:1234" \
    --flash_attn \
    --gradient_checkpointing \
    --use_wandb $WANDB_API_KEY \
-   --wandb_run_name vllm-main-$TIME \
-   --wandb_project openrlhf >> ~/log/vllm-main-$TIME.log
+   --wandb_run_name sglang-hyperbolic-$TIME \
+   --wandb_project openrlhf >> ~/log/sglang-hyperbolic-$TIME.log
 ```
 
 </details>
+
+## Debug NCCL Hang

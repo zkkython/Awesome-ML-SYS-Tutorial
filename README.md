@@ -53,6 +53,8 @@ $$
 
 ## 其他
 
+- [一文理解 special tokens 和 chat template](./transformers/special_tokens.md)：同样记录于知乎 [一文理解 special tokens 和 chat template](https://zhuanlan.zhihu.com/p/17052593700)。
 - [在 CI 上编译 jupyter notebook 并部署为文档](https://zhuanlan.zhihu.com/p/2382351079)
+
 
 
