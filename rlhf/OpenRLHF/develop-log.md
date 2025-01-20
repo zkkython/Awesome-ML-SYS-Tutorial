@@ -1141,6 +1141,131 @@ ray job submit --address="172.27.13.23:1234" \
    --wandb_project openrlhf >> ~/log/vllm-hyperbolic-$TIME.log
 ```
 
+
+</details>
+
+### Hyperbolic 100K 默认参数
+
+<details>
+<summary> Hyperbolic 100K 默认参数 </summary>
+
+main 上默认参数
+
+```bash
+rlhf-sglang
+
+TIME=$(now)
+
+echo $TIME
+
+ray job submit --address="172.27.13.23:1234" \
+--runtime-env-json="{
+  \"working_dir\": \"${RLHF_CKPT_DIR}\",
+  \"env_vars\": {
+    \"PYTHONPATH\": \"/data/chayenne/miniconda3/envs/rlhf-sglang/lib/python3.11/site-packages\"
+  }
+}" \
+   -- python3 -m openrlhf.cli.train_ppo_ray \
+   --ref_num_nodes 1 \
+   --ref_num_gpus_per_node 1 \
+   --reward_num_nodes 1 \
+   --reward_num_gpus_per_node 1 \
+   --critic_num_nodes 1 \
+   --critic_num_gpus_per_node 1 \
+   --actor_num_nodes 1 \
+   --actor_num_gpus_per_node 1 \
+   --vllm_num_engines 1 \
+   --vllm_tensor_parallel_size 1 \
+   --colocate_critic_reward \
+   --colocate_actor_ref \
+   --pretrain OpenRLHF/Llama-3-8b-sft-mixture \
+   --reward_pretrain OpenRLHF/Llama-3-8b-rm-mixture \
+   --save_path ${RLHF_CKPT_DIR}/examples/checkpoint-vllm-main-$(now)/llama3-8b-rlhf \
+   --micro_train_batch_size 4 \
+   --train_batch_size 128 \
+   --micro_rollout_batch_size 8 \
+   --rollout_batch_size 1024 \
+   --max_samples 100000 \
+   --max_epochs 1 \
+   --prompt_max_len 1024 \
+   --generate_max_len 1024 \
+   --zero_stage 3 \
+   --bf16 \
+   --actor_learning_rate 5e-7 \
+   --critic_learning_rate 9e-6 \
+   --init_kl_coef 0.01 \
+   --prompt_data OpenRLHF/prompt-collection-v0.1 \
+   --input_key context_messages \
+   --apply_chat_template \
+   --packing_samples \
+   --normalize_reward \
+   --adam_offload \
+   --flash_attn \
+   --gradient_checkpointing \
+   --use_wandb $WANDB_API_KEY \
+   --wandb_project openrlhf \
+   --wandb_run_name vllm-main-$TIME >> ~/log/vllm-main-$TIME.log
+```
+
+dev pr 上默认参数
+
+```bash
+rlhf-sglang
+
+TIME=$(now)
+
+echo $TIME
+
+ray job submit --address="172.27.13.23:1234" \
+--runtime-env-json="{
+  \"working_dir\": \"${RLHF_CKPT_DIR}\",
+  \"env_vars\": {
+    \"PYTHONPATH\": \"/data/chayenne/miniconda3/envs/rlhf-sglang/lib/python3.11/site-packages\"
+  }
+}" \
+   -- python3 -m openrlhf.cli.train_ppo_ray \
+   --backend sglang \
+   --ref_num_nodes 1 \
+   --ref_num_gpus_per_node 1 \
+   --reward_num_nodes 1 \
+   --reward_num_gpus_per_node 1 \
+   --critic_num_nodes 1 \
+   --critic_num_gpus_per_node 1 \
+   --actor_num_nodes 1 \
+   --actor_num_gpus_per_node 1 \
+   --vllm_num_engines 1 \
+   --vllm_tensor_parallel_size 1 \
+   --colocate_critic_reward \
+   --colocate_actor_ref \
+   --pretrain OpenRLHF/Llama-3-8b-sft-mixture \
+   --reward_pretrain OpenRLHF/Llama-3-8b-rm-mixture \
+   --save_path ${RLHF_CKPT_DIR}/examples/checkpoint-sglang-dev-$(now)/llama3-8b-rlhf \
+   --micro_train_batch_size 4 \
+   --train_batch_size 128 \
+   --micro_rollout_batch_size 8 \
+   --rollout_batch_size 1024 \
+   --max_samples 100000 \
+   --max_epochs 1 \
+   --prompt_max_len 1024 \
+   --generate_max_len 1024 \
+   --zero_stage 3 \
+   --bf16 \
+   --actor_learning_rate 5e-7 \
+   --critic_learning_rate 9e-6 \
+   --init_kl_coef 0.01 \
+   --prompt_data OpenRLHF/prompt-collection-v0.1 \
+   --input_key context_messages \
+   --apply_chat_template \
+   --packing_samples \
+   --normalize_reward \
+   --adam_offload \
+   --flash_attn \
+   --gradient_checkpointing \
+   --use_wandb $WANDB_API_KEY \
+   --wandb_project openrlhf \
+   --wandb_run_name sglang-dev-$TIME >> ~/log/sglang-dev-$TIME.log
+```   
+
 </details>
 
 ## Debug NCCL Hang
