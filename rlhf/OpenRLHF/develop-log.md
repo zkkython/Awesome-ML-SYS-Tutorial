@@ -1180,10 +1180,10 @@ ray job submit --address="172.27.13.23:1234" \
    --colocate_actor_ref \
    --pretrain OpenRLHF/Llama-3-8b-sft-mixture \
    --reward_pretrain OpenRLHF/Llama-3-8b-rm-mixture \
-   --save_path ${RLHF_CKPT_DIR}/examples/checkpoint-vllm-main-$(now)/llama3-8b-rlhf \
-   --micro_train_batch_size 4 \
+   --save_path ${RLHF_CKPT_DIR}/examples/checkpoint-vllm-$(now)/llama3-8b-rlhf \
+   --micro_train_batch_size 2 \
    --train_batch_size 128 \
-   --micro_rollout_batch_size 8 \
+   --micro_rollout_batch_size 4 \
    --rollout_batch_size 1024 \
    --max_samples 100000 \
    --max_epochs 1 \
@@ -1203,8 +1203,8 @@ ray job submit --address="172.27.13.23:1234" \
    --flash_attn \
    --gradient_checkpointing \
    --use_wandb $WANDB_API_KEY \
-   --wandb_project openrlhf \
-   --wandb_run_name vllm-main-$TIME >> ~/log/vllm-main-$TIME.log
+   --wandb_project ppo-dev \
+   --wandb_run_name vllm-$TIME >> ~/log/vllm-$TIME.log
 ```
 
 dev pr 上默认参数
@@ -1239,10 +1239,10 @@ ray job submit --address="172.27.13.23:1234" \
    --colocate_actor_ref \
    --pretrain OpenRLHF/Llama-3-8b-sft-mixture \
    --reward_pretrain OpenRLHF/Llama-3-8b-rm-mixture \
-   --save_path ${RLHF_CKPT_DIR}/examples/checkpoint-sglang-dev-$(now)/llama3-8b-rlhf \
-   --micro_train_batch_size 4 \
+   --save_path ${RLHF_CKPT_DIR}/examples/checkpoint-sglang-$(now)/llama3-8b-rlhf \
+   --micro_train_batch_size 2 \
    --train_batch_size 128 \
-   --micro_rollout_batch_size 8 \
+   --micro_rollout_batch_size 4 \
    --rollout_batch_size 1024 \
    --max_samples 100000 \
    --max_epochs 1 \
@@ -1262,8 +1262,8 @@ ray job submit --address="172.27.13.23:1234" \
    --flash_attn \
    --gradient_checkpointing \
    --use_wandb $WANDB_API_KEY \
-   --wandb_project openrlhf \
-   --wandb_run_name sglang-dev-$TIME >> ~/log/sglang-dev-$TIME.log
+   --wandb_project ppo-dev \
+   --wandb_run_name sglang-$TIME >> ~/log/sglang-$TIME.log
 ```   
 
 </details>
