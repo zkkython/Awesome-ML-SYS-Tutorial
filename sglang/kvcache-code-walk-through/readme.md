@@ -33,8 +33,45 @@ This section would give a detailed explaination for each step in the workflow an
   - prepare_for_ext, prepare_for_dec, potentially process_batch_result?
 - Could have ScheduleBatch -> Model Runner Batch -> Forward Batch flow 
 -->
-Step 1. `init_next_round_input` 
-Step 3. `prepare_for_extend`
+We will go through the important functions that are interacting with the 2 resources by sequence.
+#### Prefill Batch
+##### 1. Function `get_new_batch_prefill` 
+  - Get the prefix from radix tree cache for request
+  - Invoke `prepare_for_extend`
+    - `req_to_token_pool`
+      - Allocate to `req_pool_indices`
+      - Add prefix to `req_to_token_pool`
+    - `token_to_kv_pool`
+      - Allocate (the sum of each batch's (number of input id tokens - number of prefix tokens)) `out_cache_loc`
+      - For example: in above diagram, the batch size is 1
+        - number of input id tokens = 3 -> A,B,C 
+        - number of prefix tokens = 1 -> A
+        - We will allocate 2 slots to `out_cache_loc` for token B, C
+##### 2. Function `run_batch` 
+Run `forward_extend` on the current batch, this will eventually invoke the backend forward_extend, which is responsible for the attention calculation and also save the kv cache for the input token in `token_to_kv_pool`. 
+
+For example: In above step, we get 2 slots for token B, C in `out_cache_loc`, their corresponding K, V would be saved to this 2 slots here.
+
+##### 3. Function `process_batch_result_prefill`
+  - If the request is finished, invoke `cache_finished_req` (refer to [PLACEHOLDER] for details of `cache_finished_req` )
+  - elese invoke `cache_unfinished_req` (refer to [PLACEHOLDER] for details of `cache_unfinished_req` )
+
+Decode Batch
+1. `update_running_batch` 
+  - Invoke `prepare_for_decode`
+    - `req_to_token_pool` No change
+    - `token_to_kv_pool`
+      - Allocate (batch size * 1) slot to `out_cache_loc` becuase we only generate one token for each batch in decode mode
+      - For example: in above diagram, the round that generate D from C
+        - We will allocate 1 slots to `out_cache_loc` for token D
+2. `run_batch`
+Run `forward_decode` on the current batch, this will eventually invoke the backend forward_decode, which is responsible for the attention calculation and also save the kv cache for the input token in `token_to_kv_pool`. 
+
+For example: In above step, we get 1 slots for token D in `out_cache_loc`, it's corresponding K, V would be saved to this 1 slot here.
+
+3. `process_batch_result_decode`
+  - If the request is finished, invoke `cache_finished_req` (refer to [PLACEHOLDER] for details of `cache_finished_req` )
+  - No operation for cache is needed for unfinished request
 
 ### Backend ([attention backend](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/layers/attention/))
 Using Flash Infer as example:
