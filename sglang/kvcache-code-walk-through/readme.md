@@ -52,11 +52,11 @@ We will go through the important functions that are interacting with the two res
 ##### 2. Function `run_batch` 
 Run `forward_extend` on the current batch, this will eventually invoke the Attention Backend, who is responsible for 
 - Save the kv cache of extend tokens.
-  - Save KV cache for extends token to `token_to_kv_pool`
+  - Save KV cache for extends token to `token_to_kv_pool` (Function `save_kv_cache`)
   - For example: In above step, we get 2 slots for token B, C in `out_cache_loc`, their corresponding K, V would be saved to this 2 slots here.
 - Run forward, the input would be
-  - extend tokens, in our example token A
-  - All cached tokens' `out_cache_loc` from `req_to_token_pool` ([create_flashinfer_kv_indices_triton](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/layers/attention/flashinfer_backend.py#L856)).
+  - Q = extend tokens, in our example token B, C
+  - KV = All cached tokens from `req_to_token_pool` by `out_cache_loc` including B, C (Function `create_flashinfer_kv_indices_triton`).
 
 ##### 3. Function `process_batch_result_prefill`
   - If the request is finished, invoke `cache_finished_req` (refer to [PLACEHOLDER] for details of `cache_finished_req` )
@@ -74,11 +74,11 @@ Run `forward_extend` on the current batch, this will eventually invoke the Atten
 ##### 2. Function `run_batch`
 Run `forward_decode` on the current batch, this will eventually invoke the Attention Backend, who is responsible for 
 - Save the kv cache of decode token.
-  - Save KV cache for decode token to `token_to_kv_pool` ([save_kv_cache](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/layers/attention/flashinfer_backend.py#L426))
+  - Save KV cache for decode token to `token_to_kv_pool` (Function `save_kv_cache`)
   - For example: In above step, we get 1 slots for token D in `out_cache_loc`, it's corresponding K, V would be saved to this 1 slot here.
 - Run forward, the input would be:
-  - decode token, in our example token C
-  - All cached tokens `out_cache_loc` from `req_to_token_pool` ([create_flashinfer_kv_indices_triton](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/layers/attention/flashinfer_backend.py#L856))
+  - Q = decode token, in our example token D
+  - KV = All cached tokens from `req_to_token_pool` by `out_cache_loc` including D (Function `create_flashinfer_kv_indices_triton`)
 
 ##### 3. Function `process_batch_result_decode`
   - If the request is finished, invoke `cache_finished_req` (refer to [PLACEHOLDER] for details of `cache_finished_req` )
