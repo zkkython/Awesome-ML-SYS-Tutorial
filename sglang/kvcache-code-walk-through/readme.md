@@ -24,9 +24,8 @@ There are two-level memory pools to manage KV cache. `req_to_token_pool` maps a 
 
 ## Workflows
 ![alt text](kvcache-code-walkthrough.png)
-We will go through the important functions that are interacting with the two resources by sequence. Some assumptions for the example are:
-- For ([attention backend](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/layers/attention/)), we will use Flash Infer as example
-
+This section will guide you through the key functions that interact with the two resources in a sequential manner. For simplicity, we make few assumptions:
+- we will assume the use of Flash Infer as the attention backend.
 
 ### Scheduler ([scheduler.py](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/managers/scheduler.py)) ([schedule_batch.py](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/managers/schedule_batch.py))
 <!-- 
