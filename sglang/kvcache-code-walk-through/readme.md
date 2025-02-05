@@ -24,10 +24,10 @@ There are two-level memory pools to manage KV cache. `req_to_token_pool` maps a 
 
 ## Workflows
 ![alt text](kvcache-code-walkthrough.png)
-This section will guide you through the key functions that interact with the two resources in a sequential manner. For simplicity, we make few assumptions:
-- we will assume the use of Flash Infer as the attention backend.
+Following the graph, this section provides a step-by-step walkthrough of the key functions that interact with the two resources. To facilitate this explanation, we will make a few assumptions:
+- We use Flash Infer as backend
 
-### Scheduler ([scheduler.py](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/managers/scheduler.py)) ([schedule_batch.py](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/managers/schedule_batch.py))
+### Scheduler And Attention Backend ([scheduler.py](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/managers/scheduler.py)) ([schedule_batch.py](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/managers/schedule_batch.py)) ([Attention Batckend](https://github.com/sgl-project/sglang/tree/main/python/sglang/srt/layers/attention))
 <!-- 
 - Must have detailed explanation for interaction between `Scheduler` and `Radix Cache` - init_next_runs, cache_unfinished, cache_finished
 - Must have detailed event sequences for how 2 pools being updated in schedulers functions listed in the diagram
@@ -90,4 +90,4 @@ Run `forward_decode` on the current batch, this will eventually invoke the Atten
 - Must have diagram for radix tree updates under multiple requests
 - Could compare between chunked cache and radix cache 
 -->
-Step 2. `match_prefix`
+TODO
