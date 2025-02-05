@@ -22,6 +22,12 @@ There are two-level memory pools to manage KV cache. `req_to_token_pool` maps a 
     - Dim3: Head Dimension
     - Value: `cache_k` for k_buffer and `cache_v` for v_buffer
 
+### **Radix Tree Cache**
+A tree structure to enhance the reuse of prefix KV cache
+- **Access:**
+  - Key: Token ID
+  - Value: Token's KV Indices
+
 ## Workflows
 ![alt text](kvcache-code-walkthrough.png)
 Following the graph, this section provides a step-by-step walkthrough of the key functions that interact with the two resources. To facilitate this explanation, we will make a few assumptions:
