@@ -1,10 +1,10 @@
 # KV Cache
 
-This doc explain on a high level how the KV cache being managed following the lifecycle of a request
+This document explains on a high level how the KV cache is managed following the lifecycle of a request.
 
 ## Resources
 
-There are 2 level memory pools to manage KV cache. `req_to_token_pool` maps a request to its token locations. `token_to_kv_pool` maps a token location to its KV cache data, `token_to_kv_pool` have model specific implementation like MHA, MLA, DoubleSparse.
+There are two-level memory pools to manage KV cache. `req_to_token_pool` maps a request to its token locations. `token_to_kv_pool` maps a token location to its KV cache data, `token_to_kv_pool` has model-specific implementation like MHA, MLA, DoubleSparse.
 
 ### **req_to_token_pool**
 - **Layout:** #Requests * #Tokens
@@ -24,7 +24,9 @@ There are 2 level memory pools to manage KV cache. `req_to_token_pool` maps a re
 
 ## Workflows
 ![alt text](kvcache-code-walkthrough.png)
-This section would give a detailed explaination for each step in the workflow and how the 2 resources being accessed in each step.
+We will go through the important functions that are interacting with the two resources by sequence. Some assumptions for the example are:
+- For ([attention backend](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/layers/attention/)), we will use Flash Infer as example
+
 
 ### Scheduler ([scheduler.py](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/managers/scheduler.py)) ([schedule_batch.py](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/managers/schedule_batch.py))
 <!-- 
@@ -33,7 +35,6 @@ This section would give a detailed explaination for each step in the workflow an
   - prepare_for_ext, prepare_for_dec, potentially process_batch_result?
 - Could have ScheduleBatch -> Model Runner Batch -> Forward Batch flow 
 -->
-We will go through the important functions that are interacting with the 2 resources by sequence.
 #### Prefill Batch
 ##### 1. Function `get_new_batch_prefill` 
   - Get the prefix from radix tree cache for request
@@ -47,51 +48,41 @@ We will go through the important functions that are interacting with the 2 resou
         - number of input id tokens = 3 -> A,B,C 
         - number of prefix tokens = 1 -> A
         - We will allocate 2 slots to `out_cache_loc` for token B, C
+        
 ##### 2. Function `run_batch` 
-Run `forward_extend` on the current batch, this will eventually invoke the backend forward_extend, which is responsible for the attention calculation and also save the kv cache for the input token in `token_to_kv_pool`. 
-
-For example: In above step, we get 2 slots for token B, C in `out_cache_loc`, their corresponding K, V would be saved to this 2 slots here.
+Run `forward_extend` on the current batch, this will eventually invoke the Attention Backend, who is responsible for 
+- Save the kv cache of extend tokens.
+  - Save KV cache for extends token to `token_to_kv_pool`
+  - For example: In above step, we get 2 slots for token B, C in `out_cache_loc`, their corresponding K, V would be saved to this 2 slots here.
+- Run forward, the input would be
+  - extend tokens, in our example token A
+  - All cached tokens' `out_cache_loc` from `req_to_token_pool` ([create_flashinfer_kv_indices_triton](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/layers/attention/flashinfer_backend.py#L856)).
 
 ##### 3. Function `process_batch_result_prefill`
   - If the request is finished, invoke `cache_finished_req` (refer to [PLACEHOLDER] for details of `cache_finished_req` )
-  - elese invoke `cache_unfinished_req` (refer to [PLACEHOLDER] for details of `cache_unfinished_req` )
+  - else invoke `cache_unfinished_req` (refer to [PLACEHOLDER] for details of `cache_unfinished_req` )
 
-Decode Batch
-1. `update_running_batch` 
+#### Decode Batch
+##### 1. Function `update_running_batch` 
   - Invoke `prepare_for_decode`
     - `req_to_token_pool` No change
     - `token_to_kv_pool`
-      - Allocate (batch size * 1) slot to `out_cache_loc` becuase we only generate one token for each batch in decode mode
+      - Allocate (batch size * 1) slot to `out_cache_loc` because we only generate one token for each batch in decode mode
       - For example: in above diagram, the round that generate D from C
         - We will allocate 1 slots to `out_cache_loc` for token D
-2. `run_batch`
-Run `forward_decode` on the current batch, this will eventually invoke the backend forward_decode, which is responsible for the attention calculation and also save the kv cache for the input token in `token_to_kv_pool`. 
 
-For example: In above step, we get 1 slots for token D in `out_cache_loc`, it's corresponding K, V would be saved to this 1 slot here.
-
-3. `process_batch_result_decode`
-  - If the request is finished, invoke `cache_finished_req` (refer to [PLACEHOLDER] for details of `cache_finished_req` )
-  - No operation for cache is needed for unfinished request
-
-### Backend ([attention backend](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/layers/attention/))
-Using Flash Infer as example:
-<!-- 
-- Must have mention save KV and update token_to_kv_pool
-- Could mention the interface abstraction, i.e among flash infer and triton 
--->
-Step 4. `foward_extend`
-In foward_extend, Attention Backend is responsible for 
-- Save the kv cache of extend tokens.
-  - Save KV cache for extends token to `token_to_kv_pool`
-- Run forward with extend tokens as input.
-  - Get all cached tokens' `out_cache_loc` from `req_to_token_pool` ([create_flashinfer_kv_indices_triton](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/layers/attention/flashinfer_backend.py#L856))
-
-Step 6.8. `foward_decode`
-In foward_decode, Attention Backend is responsible for 
+##### 2. Function `run_batch`
+Run `forward_decode` on the current batch, this will eventually invoke the Attention Backend, who is responsible for 
 - Save the kv cache of decode token.
   - Save KV cache for decode token to `token_to_kv_pool` ([save_kv_cache](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/layers/attention/flashinfer_backend.py#L426))
-- Run forward with decode token as input. 
-  - Get all cached tokens' `out_cache_loc` from `req_to_token_pool` ([create_flashinfer_kv_indices_triton](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/layers/attention/flashinfer_backend.py#L856))
+  - For example: In above step, we get 1 slots for token D in `out_cache_loc`, it's corresponding K, V would be saved to this 1 slot here.
+- Run forward, the input would be:
+  - decode token, in our example token C
+  - All cached tokens `out_cache_loc` from `req_to_token_pool` ([create_flashinfer_kv_indices_triton](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/layers/attention/flashinfer_backend.py#L856))
+
+##### 3. Function `process_batch_result_decode`
+  - If the request is finished, invoke `cache_finished_req` (refer to [PLACEHOLDER] for details of `cache_finished_req` )
+  - No operation for cache is needed for unfinished request
 
 ### Radix Cache (radix_cache.py)
 <!-- 
