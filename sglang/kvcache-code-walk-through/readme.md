@@ -4,13 +4,13 @@ This document explains on a high level how the KV cache is managed following the
 
 ## Resources
 
-There are two-level memory pools to manage KV cache. `req_to_token_pool` maps a request to its token locations. `token_to_kv_pool` maps a token location to its KV cache data, `token_to_kv_pool` has model-specific implementation like MHA, MLA, DoubleSparse.
+There are two-level memory pools to manage KV cache. `req_to_token_pool` maps a request to its tokens' KV cache indices. `token_to_kv_pool` maps a token KV cache indices to its KV cache data, `token_to_kv_pool` has model-specific implementation like MHA, MLA, DoubleSparse.
 
 ### **req_to_token_pool**
 - **Layout:** #Requests * #Tokens
 - **Access:** 
     - Dim0: `req_pool_indices`
-    - Dim1: token positions in req
+    - Dim1: token positions in req, starting from 0
     - Value: `out_cache_loc` for token
   
 ### **token_to_kv_pool**
@@ -36,13 +36,13 @@ Following the graph, this section provides a step-by-step walkthrough of the key
 -->
 #### Prefill Batch
 ##### 1. Function `get_new_batch_prefill` 
-  - Get the prefix from radix tree cache for request
+  - Update prefix from radix tree cache for request, the `prefix_indices` will be updated too based on the prefix we get
   - Invoke `prepare_for_extend`
     - `req_to_token_pool`
       - Allocate to `req_pool_indices`
       - Add prefix to `req_to_token_pool`
     - `token_to_kv_pool`
-      - Allocate (the sum of each batch's (number of input id tokens - number of prefix tokens)) `out_cache_loc`
+      - Allocate (the sum of each reqs (number of input id tokens - number of prefix tokens)) `out_cache_loc`
       - For example: in above diagram, the batch size is 1
         - number of input id tokens = 3 -> A,B,C 
         - number of prefix tokens = 1 -> A
@@ -50,12 +50,12 @@ Following the graph, this section provides a step-by-step walkthrough of the key
         
 ##### 2. Function `run_batch` 
 Run `forward_extend` on the current batch, this will eventually invoke the Attention Backend, who is responsible for 
-- Save the kv cache of extend tokens.
-  - Save KV cache for extends token to `token_to_kv_pool` (Function `save_kv_cache`)
-  - For example: In above step, we get 2 slots for token B, C in `out_cache_loc`, their corresponding K, V would be saved to this 2 slots here.
-- Run forward, the input would be
+- Set the kv cache of extend tokens.
+  - Set KV cache for extends token to `token_to_kv_pool` (Function `save_kv_cache`)
+  - For example: In above step, we get 2 slots for token B, C in `out_cache_loc`, their corresponding K, V would be set to this 2 slots here.
+- Run forward attention calculation, the input would be
   - Q = extend tokens, in our example token B, C
-  - KV = All cached tokens from `req_to_token_pool` by `out_cache_loc` including B, C (Function `create_flashinfer_kv_indices_triton`).
+  - KV = All cached tokens from `req_to_token_pool` by `out_cache_loc` including A(prefix tokens), B, C(extend tokens) (Function `create_flashinfer_kv_indices_triton`).
 
 ##### 3. Function `process_batch_result_prefill`
   - If the request is finished, invoke `cache_finished_req` (refer to [PLACEHOLDER] for details of `cache_finished_req` )
@@ -77,7 +77,7 @@ Run `forward_decode` on the current batch, this will eventually invoke the Atten
   - For example: In above step, we get 1 slots for token D in `out_cache_loc`, it's corresponding K, V would be saved to this 1 slot here.
 - Run forward, the input would be:
   - Q = decode token, in our example token D
-  - KV = All cached tokens from `req_to_token_pool` by `out_cache_loc` including D (Function `create_flashinfer_kv_indices_triton`)
+  - KV = All cached tokens from `req_to_token_pool` by `out_cache_loc` including A, B, C(from previous round), D (Function `create_flashinfer_kv_indices_triton`)
 
 ##### 3. Function `process_batch_result_decode`
   - If the request is finished, invoke `cache_finished_req` (refer to [PLACEHOLDER] for details of `cache_finished_req` )
