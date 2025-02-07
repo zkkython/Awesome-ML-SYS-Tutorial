@@ -12,6 +12,7 @@ verl 希望inference engine能够支持SPMD
 ```bash
 git clone https://github.com/ocss884/verl verl-sglang
 cd verl-sglang
+git checkout dev_sglang
 ```
 pip install一下Tom开发好的sglang版本, 用feat/overall_verl分支
 ```bash
