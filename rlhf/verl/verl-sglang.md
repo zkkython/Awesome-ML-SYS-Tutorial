@@ -1,8 +1,8 @@
 ### sglang接入verl
 
 ## 问题背景
-在开始前可以快速看一下:
-SPMD on vllm: https://github.com/vllm-project/vllm/issues/11400
+在开始前可以快速看一下:  
+SPMD on vllm: https://github.com/vllm-project/vllm/issues/11400  
 verl 希望inference engine能够支持SPMD
 ![alt text](image-1.png)
 ![alt text](image.png)
@@ -24,9 +24,9 @@ pip install flashinfer-python --find-links https://flashinfer.ai/whl/cu121/torch
 ```
 或者直接用在torch2.4 build的flashinfer也可以在第一个pip的时候直接find，选择cu121是因为内部镜像只到cu121，就不手动装cu124了
 
-开发配置
-sglang 0.4.1.post5
-torch2.5.1+cu121
+开发配置  
+sglang 0.4.1.post5  
+torch2.5.1+cu121  
 flashinfer 0.1.6+cu121torch2.4
 
 
@@ -88,14 +88,14 @@ main_ppo里调用main_task，这里各种mapping定义了后面要用要用的wo
 
 ### RayPPOTrainer.init_worker
 这里开始会有点绕，直接跳到
-![alt text](image-2.png)
+![alt text](image-2.png)  
 可以看到遍历了resource pool to class，这里其实还是在对worker class做一些预处理，下面会逐个init_model critic, actor_rollout, ref, reword
-这里开始会涉及sglang需要actor_rollout worker的修改
-跳到verl/worker/fsdp_workers.py，ActorRolloutRefWorker
+这里开始会涉及sglang需要actor_rollout worker的修改  
+跳到verl/worker/fsdp_workers.py，ActorRolloutRefWorker  
 
 
 
-用vLLM跑个试运行
+用vLLM跑个试运行  
 首先需要设置一下vLLM的backend，目前vllm只能用xformers
 ```bash
 export VLLM_ATTENTION_BACKEND=XFORMERS
