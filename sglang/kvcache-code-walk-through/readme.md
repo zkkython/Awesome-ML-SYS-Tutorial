@@ -185,30 +185,30 @@ This maps the request's tokens to actual KV cache positions (kv_indices) using r
 
 Key details about req_to_token_pool: It is a 2D matrix of size (max_num_reqs + 1, context_len + 4). The second dimension stores the KV cache positions (kv_indices).
 
-### 3. Insert into Radix Cache: `self.insert()`
+
+### 3. Insert into Radix Cache: self.insert()
 ```python
 new_prefix_len = self.insert(token_ids, kv_indices.clone())
+This method inserts token_ids and their corresponding kv_indices into the Radix Cache. If successful, it returns a new prefix length (new_prefix_len).
 ```
+Purpose of Radix Cache:
 
-This inserts token_ids and their corresponding kv_indices into the Radix Cache. If successful, it returns a new prefix length new_prefix_len.
-
-Purpose of Radix Cache: Manages token prefix matching + Improves KV Cache reuse.
-
+Manages token prefix matching.
+Improves KV cache reuse.
 Important: We are handling last_batch!
 
-When self.last_batch is set to the current last_batch, each request's prefix_indices and last_node are already initialized.
-Refer to schedule_policy.py -> calc_priority() and _compute_prefix_matches(). _compute_prefix_matches() calls self.tree_cache.match_prefix().
+When self.last_batch is set to the current last_batch, each request’s prefix_indices and last_node are already initialized. Refer to schedule_policy.py -> calc_priority() and _compute_prefix_matches(). The _compute_prefix_matches() method calls self.tree_cache.match_prefix().
+
 Example of insert() / _insert_helper():
 
 ```python
-req.token_ids = [101, 102, 103, 104, 105]
+req.token_ids = [A, B, C, D, E]
+Current Radix Cache:
 ```
 
-Current Radix Cache:
-
 ```python
-cached_tokens = [101, 102]
-req.prefix_indices = [101, 102]
+cached_tokens = [A, B]
+req.prefix_indices = [A, B]
 ```
 
 Current KV indices:
@@ -225,35 +225,32 @@ new_prefix_len = self.insert(token_ids, kv_indices.clone())
 
 Insertion process:
 
-[101, 102] already exists.
-Insert [103, 104, 105].
-Returns new_prefix_len = 5 (meaning [101, 102, 103, 104, 105] is fully cached).
-
+[A, B] already exists in the cache.
+We insert [C, D, E].
+new_prefix_len returns 5, indicating [A, B, C, D, E] is now fully cached.
 Updated Radix Cache:
 
 ```python
-cached_tokens = [101, 102, 103, 104, 105]
-req.prefix_indices remains [101, 102]
+cached_tokens = [A, B, C, D, E]
+req.prefix_indices remains [A, B]
 ```
 
-### 4. KV Space Management: `self.token_to_kv_pool.free()`
-
+### 4. KV Space Management: self.token_to_kv_pool.free()
 ```python
 self.token_to_kv_pool.free(kv_indices[len(req.prefix_indices) : new_prefix_len])
 ```
 
 Purpose:
-Removes duplicate parts to free up KV Cache space.
+Frees up KV cache space by removing duplicate parts.
 
 Example:
+* Assume the Radix Cache already contains [A, B, C, D, E].
+* Prefill step 1: We find [A, B, C] in the Radix Cache (no need to store them again).
+* Prefill step 2: We want to add [D, E, F, G, H].
+* [D, E] are already in the cache, so only [F, G, H] must be stored anew.
+* Consequently, [D, E] should be freed from token_to_kv_pool to avoid wasting memory.
 
-* Assume Radix Cache contains [1, 2, 3, 4, 5].
-* Prefill step 1: Cached [1, 2, 3] (found in Radix Cache).
-* Prefill step 2: Adds [4, 5, 6, 7, 8].
 
-* [4, 5] do not need to be stored again as they already exist.
-* Instead, [6, 7, 8] are stored in a new Radix Tree Node.
-* Thus, [4, 5] should be freed from token_to_kv_pool to avoid wasting memory.
 
 ### 5. Update prefix_indices: `self.match_prefix()`
 
