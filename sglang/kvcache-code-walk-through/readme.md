@@ -2,24 +2,30 @@
 
 This document explains on a high level how the KV cache is managed following the lifecycle of a request.
 
-## Overview
+## Scheduler Overview
+
+This section illustrates how the Scheduler manage each request into a Batch and how a Batch would be processed. It provides a high-level view of the lifecycle for a batch. We will go in to details on each functions.
+
+
 ![alt text](scheduler_overview.png)
 The figure illustrates how the **Scheduler** directs requests from the **Waiting Queue** into a **New Batch** (prefill phase) and then into the **Running Batch** (decode phase). It provides a high-level view of the batching lifecycle—covering prefill, decode, and the decision logic behind when to switch modes—alongside the main functions in the code (e.g., `recv_requests`, `get_new_batch_prefill`, `run_batch`, `process_batch_result`).
 
 ### Resources
 
-1. Waiting Queue (Requests)  
+1. Waiting Queue (Requests)
+- The Waiting Queue is a data structure that stores newly arrived requests. Before processing, these requests may be reordered based on priority or memory availability to efficiently organize batch processing tasks.
+- By default, priority is determined based on the prefix length of the current request in the radix tree (i.e., the length of the already cached portion).
 - **New requests** arrive and are placed into the waiting queue.  
 - Each request may include tokenized input IDs (e.g., text/image tokens) or embedding vectors.  
 - The queue may be **reordered** (by priority or memory availability) before requests are pulled to form a batch.
 
 2. Scheduler  
 *(For brevity, only key steps are highlighted)*  
-1. **Polling for requests**: Continuously retrieves new requests (`recv_requests`) and enqueues them if they are valid.  
-2. **Prefill batch creation**: When feasible, combines as many waiting requests as possible into a single **New Batch** (`get_new_batch_prefill`). Checks available memory (`token_to_kv_pool`, `req_to_token_pool`) and stops if memory is insufficient or a batch limit is reached.  
-3. **Prefill/Decode switching**: When no new prefill batch can be formed—or there are ongoing requests still in progress—triggers the decode phase (`update_running_batch`).  
-4. **Running the batch**: Invokes `run_batch` to execute a forward pass (prefill or decode) on the current batch.  
-5. **Processing results**: Calls `process_batch_result` to determine which requests have finished and which continue. Finished requests are handled via `cache_finished_req`, while incomplete requests are handled via `cache_unfinished_req`.
+- **Polling for requests**: Continuously retrieves new requests (`recv_requests`) and enqueues them if they are valid.  
+- **New Batch creation**: When feasible, combines as many waiting requests as possible into a single **New Batch** (`get_new_batch_prefill`), the **New Batch** will then be used for prefill. Checks available memory (`token_to_kv_pool`, `req_to_token_pool`) and stops if memory is insufficient or a batch limit is reached.  
+- **Prefill/Decode switching**: When no new **New Batch** can be formed—or there are ongoing requests still in progress—triggers the decode phase (`update_running_batch`).  
+- **Running the batch**: Invokes `run_batch` to execute a forward pass (prefill or decode) on the current batch.  
+- **Processing results**: Calls `process_batch_result` to determine which requests have finished and which continue. Finished requests are handled via `cache_finished_req`, while incomplete requests are handled via `cache_unfinished_req`.
 
 3. New Batch (for Prefill)  
 - **Definition**: A group of requests pulled from the waiting queue via scheduling logic (e.g., priority, memory constraints) that will undergo the **prefill** stage.  
@@ -43,10 +49,10 @@ The figure illustrates how the **Scheduler** directs requests from the **Waiting
 ### Putting Them Together
 
 1. **Continuous Polling**: The Scheduler loops, calling `recv_requests` to collect newly arrived requests, which are placed into the waiting queue.  
-2. **Forming the Prefill Batch**: It attempts to build a **New Batch** (`get_new_batch_prefill`) by checking memory availability and packing as many requests as possible.  
+2. **Forming the New Batch**: It attempts to build a **New Batch** (`get_new_batch_prefill`) by checking memory availability and packing as many requests as possible. 
 3. **Prefill or Decode**:  
    - If a **New Batch** is formed, those requests enter the prefill phase.  
-   - If no new prefill batch is formed—or existing requests are still in progress—decode begins or continues.  
+   - If no new new batch is formed—or existing requests are still in progress—decode begins or continues.  
 4. **Running the Batch**: Once the **Global Batch** is determined (prefill vs. decode), `run_batch` is called to run a forward pass.  
 5. **Result Processing**: After `run_batch`, the Scheduler calls `process_batch_result` to update request statuses. Finished requests go through `cache_finished_req`; others are retained via `cache_unfinished_req`.  
 6. **Iteration**: The loop repeats until all requests are eventually completed. If insufficient memory is encountered, requests may be chunked (in prefill) or retracted (in decode), then reinserted into the waiting queue for later processing.
