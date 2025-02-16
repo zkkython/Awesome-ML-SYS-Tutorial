@@ -16,6 +16,8 @@ git checkout dev_sglang
 ```
 pip install一下Tom开发好的sglang版本, 用feat/overall_verl分支
 ```bash
+pip install .
+
 pip install "sglang[all] @ git+https://github.com/fzyzcjy/sglang.git/@feat/overall_verl#egg=sglang&subdirectory=python" torch==2.5.1+cu121 --extra-index-url https://download.pytorch.org/whl/cu121 --find-links https://flashinfer.ai/whl/cu121/torch2.4/flashinfer-python/
 ```
 手动装一下flashinfer，直接find links现在会找不到，因为用torch2.5 build的都改名叫flashinfer-python了，但这个版本的sglang pyproject.toml还没更新
