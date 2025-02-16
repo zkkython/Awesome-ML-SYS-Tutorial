@@ -20,17 +20,34 @@ pip install .
 
 pip install "sglang[all] @ git+https://github.com/fzyzcjy/sglang.git/@feat/overall_verl#egg=sglang&subdirectory=python" torch==2.5.1+cu121 --extra-index-url https://download.pytorch.org/whl/cu121 --find-links https://flashinfer.ai/whl/cu121/torch2.4/flashinfer-python/
 ```
-手动装一下flashinfer，直接find links现在会找不到，因为用torch2.5 build的都改名叫flashinfer-python了，但这个版本的sglang pyproject.toml还没更新
-```bash
-pip install flashinfer-python --find-links https://flashinfer.ai/whl/cu121/torch2.5/flashinfer/
-```
-或者直接用在torch2.4 build的flashinfer也可以在第一个pip的时候直接find，选择cu121是因为内部镜像只到cu121，就不手动装cu124了
 
+if 出现
+```shell
+ERROR: pip’s dependency resolver does not currently take into account all the packages that are installed. This behaviour is the source of the following dependency conflicts.
+verl 0.1 requires vllm<=0.6.3, but you have vllm 0.6.4.post1 which is incompatible.
+```
+不管这个，这里SGLang不依赖具体vllm的版本  
+
+如果出现flash-attn不存在，需要尝试一次安装
+```
+pip install wheel, packaging
+pip install flash-attn --no-build-isolation --no-deps
+```
+如果出现CUDA ERROR，尝试修改CUDA_HOME和LD_LIBRARY_PATH到本地的cuda12.1
+
+```
+export LD_LIBRARY_PATH=/usr/local/cuda-12.1/lib64:$LD_LIBRARY_PATH
+export CUDA_HOME=“/usr/local/cuda-12.1”
+```
+
+成功安装后可以看到关键库的配置如下  
 开发配置  
 sglang 0.4.1.post5  
 torch2.5.1+cu121  
-flashinfer 0.1.6+cu121torch2.4
-
+flashinfer 0.1.6+cu121torch2.4  
+verl 0.1  
+ray 2.42.1  
+flash-attn 2.7.4.post1  
 
 ## 运行PPO
 
