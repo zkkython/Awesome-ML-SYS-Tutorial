@@ -114,7 +114,7 @@ alias cur="cursor"
 alias cod="code"
 
 # 打开配置文件
-alias ope="cursor ~/.bashrc"
+alias ope="cursor /home/chenyang/.zshrc"
 
 # 用 cursor 打开当前路径下的文件
 alias co="cursor ."
@@ -207,6 +207,42 @@ function al() {
     fi
 }
 
+## 激活虚拟环境
+
+function ca() {
+    env_name="$1"
+    # 根据环境名构造激活脚本的路径
+    activation_script="$HOME/.python/${env_name}/bin/activate"
+    
+    # 检查激活脚本是否存在
+    if [ ! -f "$activation_script" ]; then
+        echo "Error: 激活脚本 '$activation_script' 不存在"
+        return 1
+    fi
+
+    # 激活虚拟环境
+    # 注意：使用 source 激活后，当前 shell 环境会被修改
+    source "$activation_script"
+    
+    ceiling="===== Activated Env: ${env_name} ====="
+    echo "$ceiling"
+    
+    # 输出当前 python 路径和版本
+    python_path=$(which python)
+    echo "Python 路径：$python_path"
+    python --version
+
+    # 如果你想检查环境是否切换成功，可以考虑检查环境变量
+    # 比如，在虚拟环境中通常会设置 VIRTUAL_ENV 变量
+    if [ -z "$VIRTUAL_ENV" ]; then
+        echo "===== NO!! Environment switch failed ====="
+        return 1
+    else
+        echo "===== YES!! Environment switched to: $VIRTUAL_ENV ====="
+    fi
+}
+
+
 # 读取时间戳，用于给 log 做标记
 
 function now() {
@@ -227,6 +263,13 @@ alias awe="cd /data/chenyang/Awesome-ML-SYS-Tutorial"
 # 查看当前虚拟环境
 alias uvv="uv venv"
 
+## 分配 1 张 GPU
+al 1
+
+## 激活 sglang 环境
+ca sglang
+sleep 1
+clear
 ```
 
 </details>
@@ -255,3 +298,23 @@ pip install uv
 ```bash
 ssh-keygen
 ```
+
+把公钥扔到 github 就好了。然后本地配置 git config：
+
+```bash
+git config --global user.name "zhaochenyang20"
+git config --global user.email "zhaochenyang20@gmail.com"
+```
+
+## 配置 oh-my-zsh
+
+其实我一般不自己折腾换 shell，但是如果默认就是 zsh 的话，我还是喜欢用 oh-my-zsh：
+
+**注意 oh-my-zsh 会覆盖之前所有的 .zshrc 文件，所以需要先备份！！！**
+
+
+```bash
+sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
+```
+
+
