@@ -169,40 +169,25 @@ Run `forward_decode` on the current batch, this will eventually invoke the Atten
 
 
 ### cache_finished_req & cache_finished_req
+Those two functions manage the KV cache in Radix Cache, ReqToTokenPool, and TokenToKVPool for unfinished requests. We will walk through the code for how these resources are updated.
+
+
+### **Comparison: `cache_finished_req()` vs. `cache_unfinished_req()`**
+| Step | `cache_unfinished_req()` | `cache_finished_req()` |
+|------|--------------------------|--------------------------|
+| **1. Get `kv_indices`** | Obtains from `req_to_token_pool`. | Obtains from `req_to_token_pool`. |
+| **2. Update Radix Cache** | Calls `insert()` to update. | Calls `insert()` to update. |
+| **3. Free KV Cache** | Calls `self.token_to_kv_pool.free()`. | Calls `self.token_to_kv_pool.free()` (requires verification). |
+| **4. Handle `req_to_token_pool`** | Performs a **write** operation to update. | **Releases** `req_to_token_pool` as the request is completed. |
+| **5. Handle `req.last_node`** | Increases the reference count of `req.last_node`. | **Decreases** the reference count of `req.last_node`, as `req` is finished. |
+
+As we can observe, the core functionality is essentially the same for `cache_unfinished_req()` and `cache_finished_req()`, including managing req_to_token_pool, token_to_kv_pool and tree_cache for requests. And we are going to walk through the code for how these resources are updated, especially focus on cache_unfinsihed_req.
 
 # `cache_unfinished_req`
 
-This function primarily stores unfinished requests in the **Radix Cache**.  
-But what exactly is an **unfinished request**?  
+### 1. Get KV Index: `req_to_token_pool.req_to_token`
 
-From the code in `scheduler.py`, we can see that **being_chunked_req** is stored.  
-Two key points to observe:  
-- The code uses `last_batch` and `being_chunked_req`.  
-
-When reading the code, we spent a long time understanding:
-- Why is it `last_batch`?  
-- Why is it `being_chunked_req` instead of `being_chunked_reqs`?
-
----
-
-### 1. Entry: `cache_unfinished_req`
-```python
-def cache_unfinished_req(self, req: Req, token_ids: Optional[List[int]] = None):
-```
-
-Retrieve the corresponding req and token_ids for the current request. Caution: token_ids here are actual integer token IDs after tokenization.
-
-### 2. Get KV Index: `req_to_token_pool.req_to_token`
-```python
-kv_indices = self.req_to_token_pool.req_to_token[req.req_pool_idx, : len(token_ids)]
-```
-
-This maps the request's tokens to actual KV cache positions (kv_indices) using req_to_token_pool.
-
-Key details about req_to_token_pool: It is a 2D matrix of size (max_num_reqs + 1, context_len + 4). The second dimension stores the KV cache positions (kv_indices).
-
-
-### 3. Insert into Radix Cache: self.insert()
+### 2. Insert into Radix Cache, self.insert(): Update Radix Cache
 ```python
 new_prefix_len = self.insert(token_ids, kv_indices.clone())
 This method inserts token_ids and their corresponding kv_indices into the Radix Cache. If successful, it returns a new prefix length (new_prefix_len).
@@ -251,7 +236,7 @@ cached_tokens = [A, B, C, D, E]
 req.prefix_indices remains [A, B]
 ```
 
-### 4. KV Space Management: self.token_to_kv_pool.free()
+### 4. KV Space Management, self.token_to_kv_pool.free(): Free KV Cache
 ```python
 self.token_to_kv_pool.free(kv_indices[len(req.prefix_indices) : new_prefix_len])
 ```
@@ -266,9 +251,7 @@ Example:
 * [D, E] are already in the cache, so only [F, G, H] must be stored anew.
 * Consequently, [D, E] should be freed from token_to_kv_pool to avoid wasting memory.
 
-
-
-### 5. Update prefix_indices: `self.match_prefix()`
+### 5. Update prefix_indices: `self.match_prefix()`: Handle `req_to_token_pool`
 
 ```python
 new_indices, new_last_node = self.match_prefix(token_ids)
@@ -286,62 +269,36 @@ Calls match_prefix() to update the request’s prefix_indices and last_node.
 Ensures Radix Cache is in sync with the request.
 
 Important:
-new_indices and new_last_node reflect the latest state after insertion.
+new_indices and new_last_node reflect the latest state after insertion. The new_indices is going to update req.prefix_indices for the next iteration, which is used to target the next KV cache position; the new_last_node is going to update last_node for the next iteration, which is used to lock the next KV cache position.
 
-### 6. `self.dec_lock_ref()` and `self.inc_lock_ref()`
+### 6. Lock Management for Memory Safety: Handle `req.last_node`
+
+##### Why maintain the lock?
+To prevent unintended deletion of active cache nodes. Keeping a lock on a node shields it from being freed while still needed.
+
+##### Where the lock is being updated:
+- The old node (req.last_node) is unlocked using dec_lock_ref(), allowing it to be freed when no longer in use.
+- The new node (new_last_node) is locked with inc_lock_ref(), protecting it from deletion.
+
+##### Where the lock will be used:
+The locked new_last_node is then assigned to req.last_node and will be used in subsequent cache operations, ensuring that further accesses to it remain safe from unintended memory release.
 
 ```python
-self.dec_lock_ref(req.last_node)
-self.inc_lock_ref(new_last_node)
-req.prefix_indices = new_indices
-req.last_node = new_last_node
+self.dec_lock_ref(req.last_node)  # Unlock the old last_node to allow for potential memory release.
+self.inc_lock_ref(new_last_node)   # Lock the new_last_node to prevent its unintended deletion.
+req.prefix_indices = new_indices   # Update the prefix indices with the new state.
+req.last_node = new_last_node       # Set new_last_node for further operations.
 ```
-
-Purpose:
-
-dec_lock_ref: Unlocks the old last_node, reducing its lock count to allow potential memory release.
-inc_lock_ref: Locks the new last_node, preventing unintended deletion.
-req.last_node retires (can be freed if needed). new_last_node must be protected from deletion.
-
-### 7. `req_to_token_pool`, `token_to_kv_pool`, and `tree_cache` Relationship
-
-Purpose:
-
-* req_to_token_pool	Maps requests to their KV indices, ensuring correct KV Cache mapping.
-* token_to_kv_pool	Manages token-to-KV Cache space, handling memory allocation and freeing.
-* tree_cache (Radix Cache)	Optimizes KV Cache reuse by storing token prefixes.
-
-### 8. Usage in `cache_unfinished_req`
-
-* req_to_token_pool: Provides kv_indices mappings.
-* token_to_kv_pool: Frees unused KV space.
-* tree_cache: Inserts new prefixes, updates prefix_indices & last_node.
-
 
 # `cache_finished_req`
 
-On the basis of understanding `cache_unfinished_req()`, `cache_finished_req()` becomes much easier to grasp because their **core functionality is essentially the same**.  
-
-### **Key Steps of `cache_finished_req()`**
-1. When a request `req` is completed, its `token_ids` are stored in the **Radix Cache**.
+### **Similar to `cache_unfinished_req()`, `cache_finished_req()` also has the following steps:**
+1. When a request `req` is completed, its `token_ids` are stored in the **Radix Cache**. Update Radix Cache 
 2. **Release** redundant **KV Cache space** in `token_to_kv_pool` (removing duplicates).
 3. **Release `req_to_token_pool`** and **update `tree_cache`**.
-
-### **Comparison: `cache_finished_req()` vs. `cache_unfinished_req()`**
-| Step | `cache_unfinished_req()` | `cache_finished_req()` |
-|------|--------------------------|--------------------------|
-| **1. Get `kv_indices`** | Obtains from `req_to_token_pool`. | Obtains from `req_to_token_pool`. |
-| **2. Update Radix Cache** | Calls `insert()` to update. | Calls `insert()` to update. |
-| **3. Free KV Cache** | Calls `self.token_to_kv_pool.free()`. | Calls `self.token_to_kv_pool.free()` (requires verification). |
-| **4. Handle `req_to_token_pool`** | Performs a **write** operation to update. | **Releases** `req_to_token_pool` as the request is completed. |
-| **5. Handle `req.last_node`** | Increases the reference count of `req.last_node`. | **Decreases** the reference count of `req.last_node`, as `req` is finished. |
 
 ### **Key Difference**
 - `cache_unfinished_req()` **writes and updates** `req_to_token_pool`, while  
 - `cache_finished_req()` **releases** `req_to_token_pool`, since the request is done.  
 - `cache_unfinished_req()` **increases** the reference count of `req.last_node`, while  
 - `cache_finished_req()` **decreases** the reference count of `req.last_node`, as it no longer needs protection.  
-
-### **Conclusion**
-Apart from these differences, both functions follow the **same fundamental logic**.
-
