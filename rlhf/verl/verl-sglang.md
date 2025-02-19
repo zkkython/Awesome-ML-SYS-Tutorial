@@ -66,6 +66,40 @@ export CUDA_HOME=“/usr/local/cuda-12.1”
 - ray 2.42.1  
 - flash-attn 2.7.4.post1  
 
+### [optional] 安装verl版的megatron
+```bash
+git clone -b core_v0.4.0_verl https://github.com/eric-haibin-lin/Megatron-LM
+export PYTHONPATH=$PYTHONPATH:$(pwd)/Megatron-LM
+```
+需要配套安装Transformer Engine 1.7，使用下面的命令
+```bash
+pip3 install git+https://github.com/NVIDIA/TransformerEngine.git@v1.7
+```
+这里要过编译，可能会出现一些问题，下面是个简单的QA
+1. **CMake找不到cudnn**
+```bash
+CMake Error at /tmp/pip-req-build-s96o7cy6/3rdparty/cudnn-frontend/cmake/cuDNN.cmake:3 (find_path):
+  Could not find CUDNN_INCLUDE_DIR using the following files: cudnn.h
+Call Stack (most recent call first):
+  CMakeLists.txt:33 (include)
+```
+[这里的第三行](https://github.com/NVIDIA/cudnn-frontend/blob/1b0b5eac540b7f8fd19b18f1e6b8427c95503348/cmake/cuDNN.cmake)可以看到具体可用的查找方式，这里手动指定cudnn的安装路径给CUDNN_PATH即可，例如
+```bash
+export CUDNN_PATH=/usr/local/cuda/cuda-12/cudnn/v8.9.7.29
+```
+CUDNN_PATH路径下需要可以找到`include/cudnn.h`
+
+2. **GCC版本大等于8.1**
+参考[这个issue](https://github.com/NVIDIA/TransformerEngine/issues/1270)。编译需要支持C++17的filesystem头文件，transformer engine团队内部使用GCC 13.2.0进行编译，可以参考下面的命令安装GCC 13
+```bash
+sudo apt update
+sudo add-apt-repository ppa:ubuntu-toolchain-r/test
+sudo apt update
+sudo apt install gcc-13 g++-13
+sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-13 60
+sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-13 60
+```
+
 ## 测试 PPO 功能
 
 首先构造数据集，默认保存至 `~/data/gsm8k`。
