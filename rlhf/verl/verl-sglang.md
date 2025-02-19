@@ -90,6 +90,7 @@ export CUDNN_PATH=/usr/local/cuda/cuda-12/cudnn/v8.9.7.29
 CUDNN_PATH路径下需要可以找到`include/cudnn.h`
 
 2. **GCC版本大等于8.1**
+
 参考[这个issue](https://github.com/NVIDIA/TransformerEngine/issues/1270)。编译需要支持C++17的filesystem头文件，transformer engine团队内部使用GCC 13.2.0进行编译，可以参考下面的命令安装GCC 13
 ```bash
 sudo apt update
