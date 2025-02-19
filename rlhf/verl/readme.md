@@ -47,7 +47,7 @@ PS：之前也有基于 nemo-aligner 和 OpenRLHF 做一些解析，欢迎大家
 
 > 推理引擎的 kernal fusion 和 training engine 差距不小，batch size 不一样时，推理请求 dispatch 到不同的 kernal 上，然后 numerical 误差逐层累计，到了 log probs 这层就到了不可忽视的程度了。这个问题在 bert 时代就有了，training engine 和 inference engine 的精度差异无法规避，而且全心来搞一两个月可能内都没法修复。所以现在推理引擎在 RLHF 中更多是加速 sampling，reward 和 embedding 还得用训练脚本来算，可能得半年后花好几个月研究研究这个问题。
 
-3. reference model 和 reward model 只需要 inference engine，因为二者不需要训练，所以直接用现代训练引擎来做 inference engine，得到 log probs 和 reward。
+3. reference model 和 reward model 只需要 inference，因为二者不需要训练，但是如同我之前提到的一样，用现代推理引擎得到的 log probs 和 reward 的精度不如用现代训练引擎得到的精度，所以这里选择用 training engine 的 forward 来做 inference，得到 log probs 和 reward。
 
 有了这些认识，我们再来看 collocate 策略。collocate 策略将 actor 的 training engine 和 reference 的 inference engine 放置在同一个资源组上，将 critic 的 training/inference engine 和 reward 的 inference engine 放置在同一个资源组上，最后单独放置 actor 的 rollout engine。
 
