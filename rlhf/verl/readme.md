@@ -38,7 +38,7 @@ PS：之前也有基于 nemo-aligner 和 OpenRLHF 做一些解析，欢迎大家
 
 因此，veRL 在上层暴露出 single controller 的接口，并进行完善的封装。用户能够基于算法设计，自由组合并行策略（3D 并行、ZeRO 还有 FSDP），直接对子模块进行拼装；而在每个子模块内部，采用 multi-controller，提供强劲的效率。当然，可能更改子模块就会相对麻烦。
 
-**有了 single controller 和 multi-controller 的概念后，这里引入veRL 的第二个核心概念：hybrid engine。在 RLHF 流程中，actor model 的 generation 和 rollout 占据了绝大多数运行时间（在 veRL 是 58.9%）。并且，由于 PPO 是 online 算法，经验（experiences）必须来自于被 train 的模型本身，因此，rollout 和 training 是必须串行的。如果这两者使用不同的资源组，比如 rollout 用 2 张卡，而 training 用 4 张卡，rollout 的时候 training 的资源闲置，training 的时候 rollout 的资源闲置，无论如何都会浪费大量的计算资源。由此，veRL 将 training 和 rollout engine 放置在同一个资源组中串行执行。training 时，将 rollout engine 的显存回收（offload 到 CPU 上 或者直接析构掉），rollout 时，再将 training engine 的显存释放掉。这种将 actor model 的不同 engine 放置在同一个资源组上的方案，就称为 hybrid engine。**
+**有了 single controller 和 multi-controller 的概念后，这里引入veRL 的第二个核心概念：hybrid engine。在 RLHF 流程中，actor model 的 generation 和 rollout 占据了绝大多数运行时间（在 veRL 是 58.9%）。并且，由于 PPO 是 on-policy 算法，经验（experiences）必须来自于被 train 的模型本身，因此，rollout 和 training 是必须串行的。如果这两者使用不同的资源组，比如 rollout 用 2 张卡，而 training 用 4 张卡，rollout 的时候 training 的资源闲置，training 的时候 rollout 的资源闲置，无论如何都会浪费大量的计算资源。由此，veRL 将 training 和 rollout engine 放置在同一个资源组中串行执行。training 时，将 rollout engine 的显存回收（offload 到 CPU 上 或者直接析构掉），rollout 时，再将 training engine 的显存释放掉。这种将 actor model 的不同 engine 放置在同一个资源组上的方案，就称为 hybrid engine。**
 
 注意到，除开 hybrid engine 之外，类似共用资源组的方法还有 collocate。在讲述 collocate 策略之前，我们回顾下四个子模块分别需要什么 engine：
 
