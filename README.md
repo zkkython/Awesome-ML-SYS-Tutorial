@@ -16,6 +16,7 @@ $$
 
 ## RLHF System 开发笔记
 
+- [HybridFlow veRL 原文浅析](./rlhf/verl/readme.md)：SGLang 的 hybrid engine 的原理与实现，同样刊载于[知乎：HybridFlow veRL 原文浅析](https://zhuanlan.zhihu.com/p/24682036412)。
 - [扩展 OpenRLHF 的推理引擎](./rlhf/OpenRLHF/develop-log.md)：将 SGLang 接入到 OpenRLHF 的开发笔记，整个过程非常痛苦，而且目前还有 nccl hang error，已经直接联系了 deepspeed core contributor 在修复了。
 - [SWE-Bench：如何构造 LLM 时代的优秀 Benchmark](https://zhuanlan.zhihu.com/p/16292266518)，基于 SWE-Bench 的论文阅读笔记，如何构造好的 benchmark 以为 post-training 提供细粒度 reward，是永恒且美妙的话题。
 - [浅析以 OpenRLHF 为代表的 post-training 系统的计算流程](./rlhf/OpenRLHF/readme.md)：基于猛猿小姐姐的文章再做补充，Github native 渲染的巨烂，甚至看[知乎](https://zhuanlan.zhihu.com/p/16370000391)好了。
