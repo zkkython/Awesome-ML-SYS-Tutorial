@@ -1,5 +1,5 @@
 # KV Cache Code Walkthrough
-
+<!-- TODO(xiaotong):  CN -->
 This document offers a comprehensive overview of the KV cache management system within the SGLang implementation, delving into the lifecycle of requests and the pivotal components that facilitate this lifecycle, encompassing the Scheduler, Radix Cache, Attention Backend, and all the supporting resources.
 
 To facilitate this explanation, we will make a few assumptions in our examples:
@@ -78,11 +78,12 @@ The figure illustrates how the **Scheduler** directs requests from the `waiting_
 
 1. **New Request arrived**: The Scheduler continuously calls `recv_requests` to collect newly arrived requests, validate them and place them into the `waiting_queue`. In our example, `Req 7` are received and enqueued.
 
-3. **Merge Batches**: Before form the new batch for this round, Scheduler would merge the `cur_batch` from last round into `running_batch`. (In the diagram, `cur_batch` from last round are shown as `cur_batch(i-1)` and `running_batch` are shown as `running_batch(i-1)`. In our example, `Req 0` and `Req 1` will be merged together into the new `running_batch`. **Merge Batch** will also remove the last round `being_chunked_requests`. In the diagram, there are finished `being_chunked_requests` (e.g., `Req 5a` in the diagram), we will remove this as we do not want them to do decode phase.) 
-<!-- TODO(yangmin): explain being_chunked_requests -->
+2. **Merge Batches**: Before form the new batch for this round, Scheduler would merge the `cur_batch` from last round into `running_batch`. (In the diagram, `cur_batch` from last round are shown as `cur_batch(i-1)` and `running_batch` are shown as `running_batch(i-1)`. In our example, `Req 0` and `Req 1` will be merged together into the new `running_batch`. **Merge Batch** will also remove the last round `being_chunked_request`. In the diagram, there are finished `being_chunked_request` (e.g., `Req 5a` in the diagram), we will remove this as we do not want them to do decode phase.) 
+<!-- TODO(yangmin): explain being_chunked_request -->
 
 3. **Forming the New Batch**: Scheduler would check if a `new_batch` could be formed (in `get_new_batch_prefill`), all the requests that can fit available memory would be packed in the batch. In out example diagram, the Scheduler pulls requests from the `waiting_queue` and creates a `new_batch`, and use the `new_batch` as `cur_batch`. Not demonstrated in the diagram but if there is no `new_batch`, the `running_batch` would be used as `cur_batch`. Also, if the GPU memory is not enough, some decoding requests may be retracted according to certain retract policy. During the `retract_decode` phase, in the diagram, `Req 0` is retracted and put
-<!-- TODO(yangmin): add the requests name thats used in the example -->
+<!-- TODO(yangmin): 1. add the requests name thats used in the example -->
+<!-- TODO(yangmin): 2. explain chunked here when memory is not enough-->
 
 4. **Running the Batch**: Once the **Global Batch** is determined (prefill vs. decode), `run_batch` is called to run a forward pass.
 
@@ -90,7 +91,7 @@ The figure illustrates how the **Scheduler** directs requests from the `waiting_
 
 6. **Iteration**: The loop repeats until all requests are eventually completed. If insufficient memory is encountered, requests may be chunked (in prefill) or retracted (in decode), then reinserted into the waiting queue for later processing.
 
-
+<!-- TODO(mingyuan):  CN -->
 ## One Request Lifecycle
 ![alt text](kvcache-code-walkthrough.png)
 Following one request lifecycle, this section provides a step-by-step walkthrough of the key functions that updates the KV Cache & Memory Pools.
@@ -145,6 +146,7 @@ Run `forward_decode` on the current batch, this will eventually invoke the Atten
   - If the request is finished, invoke `cache_finished_req` (refer to [PLACEHOLDER] for details of `cache_finished_req` )
   - No operation for cache is needed for unfinished request
 
+<!-- TODO(yangmin):  CN -->
 #### `cache_finished_req` & `cache_finished_req`
 These two functions manage the KV cache in Radix Cache, ReqToTokenPool, and TokenToKVPool after batch's forward.
 
@@ -169,9 +171,6 @@ new_prefix_len = self.insert(token_ids, kv_indices.clone())
 ```
 This method inserts token_ids and their corresponding kv_indices into the Radix Cache. If successful, it returns a new prefix length (new_prefix_len).
 
-When self.last_batch is set to the current last_batch, each request’s prefix_indices and last_node are already initialized. Refer to schedule_policy.py -> calc_priority() and _compute_prefix_matches(). The _compute_prefix_matches() method calls self.tree_cache.match_prefix().
-<!-- TODO(mingyuan): can you add more explaination here? i.e what is last_batch, we never mentioned this variable in previou context -->
-
 ###### 4. `Free KV Cache` 
 After Radix Cache being updated, there might have some duplicate nodes, for example:
 * Assume the Radix Cache already contains [A, B, C, D, E].
@@ -182,9 +181,8 @@ In this case [D, E] should be freed from token_to_kv_pool to avoid wasting memor
 
 ###### 5. Update `prefix_indices` and `last_node`
 Calls `match_prefix()` to update the request’s `prefix_indices` and `last_node`. This is important as `prefix_indices` and `last_node` will be used in next iteration.
-- `prefix_indices` will be used to target the next KV cache position; 
-- `last_node` will be used to lock the next KV cache position.
-<!-- TODO(mingyuan): can you also add an example to illustrate prefix_indices and last_node -->
+- `prefix_indices` is used to calculate the needed size of extend/prefill tokens.
+- `last_node` is used to keep track of a requests last node in the radix tree so that it can be used to trace back towards root node when updating lock.
 
 ###### 6. Lock Management for Memory Safety
 To prevent unintended deletion of active cache nodes. Keeping a lock on a node shields it from being freed while still needed. After above state transition, the old `last_node` is unlocked using dec_lock_ref(), allowing it to be freed when no longer in use. The new `last_node` is locked, protecting it from deletion.
