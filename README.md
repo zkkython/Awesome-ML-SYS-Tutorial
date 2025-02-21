@@ -1,5 +1,5 @@
 # Awesome-ML-SYS-Tutorial 
-## [English version](./README-eng.md) | [简体中文](./README.md)
+## [English README](./README-eng.md) | [简体中文](./README.md)
 
 My learning notes/codes for ML SYS.
 
