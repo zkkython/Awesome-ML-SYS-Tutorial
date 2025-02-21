@@ -93,39 +93,45 @@ The figure illustrates how the **Scheduler** directs requests from the `waiting_
 
 <!-- TODO(mingyuan):  CN -->
 ## One Request Lifecycle
-![alt text](kvcache-code-walkthrough.png)
-Following one request lifecycle, this section provides a step-by-step walkthrough of the key functions that updates the KV Cache & Memory Pools.
+![alt text](kv-cache-request-lifecycle.png)
+
+Following one request lifecycle, this section provides a step-by-step walkthrough of the key functions that updates the KV Cache & Memory Pools, we will use request ABC as an example.
 
 #### Prefill Batch
 ##### Step 1. Function `get_new_batch_prefill` 
-  - Update prefix from radix tree cache for request, the `prefix_indices` will be updated too based on the prefix we get
+  - Update prefix from radix tree cache for request
+    - When `ABC` come in, say the current radix cache have one node `AFG` thats currently being referenced.
+    - `match_prefix` would try to find the prefix for `ABC` in the current radix cache, and it matched up to the first token `A` in the node.
+    - Radix Cache Split the node into `A` and `FG`, node `A` is the current last node for this request.
   - Invoke `prepare_for_extend`
     - `req_to_token_pool`
       - Allocate to `req_pool_indices`
       - Add prefix to `req_to_token_pool`
     - `token_to_kv_pool`
       - Allocate (the sum of each reqs (number of input id tokens - number of prefix tokens)) `out_cache_loc`
-      - For example: in above diagram, the batch size is 1
+      - In our example of request ABC, the batch size is 1
         - number of input id tokens = 3 -> A,B,C 
         - number of prefix tokens = 1 -> A
         - We will allocate 2 slots to `out_cache_loc` for token B, C
-##### Step 2. Function `run_batch` 
         
-##### Step 3.4. Function `run_batch` 
+##### Step 2. Function `run_batch` 
 Run `forward_extend` on the current batch, this will eventually invoke the Attention Backend, who is responsible for 
 - Set the kv cache of extend tokens.
   - Set KV cache for extends token to `token_to_kv_pool` (Function `save_kv_cache`)
-  - For example: In above step, we get 2 slots for token B, C in `out_cache_loc`, their corresponding K, V would be set to this 2 slots here.
+  - In our example: from above steps, we get 2 slots for token B, C in `out_cache_loc`, their corresponding K, V would be set to this 2 slots here.
 - Run forward attention calculation, the input would be
   - Q = extend tokens, in our example token B, C
   - KV = All cached tokens from `req_to_token_pool` by `out_cache_loc` including A(prefix tokens), B, C(extend tokens) (Function `create_flashinfer_kv_indices_triton`).
 
-##### Step 5. Function `process_batch_result_prefill`
+##### Step 3. Function `process_batch_result_prefill`
+  `cache_finished_req` and `cache_unfinished_req` are responsible for managing the KV cache in Radix Cache, ReqToTokenPool, and TokenToKVPool.
   - If the request is finished, invoke `cache_finished_req` (refer to [PLACEHOLDER] for details of `cache_finished_req` )
   - else invoke `cache_unfinished_req` (refer to [PLACEHOLDER] for details of `cache_unfinished_req` )
 
+  In our example, `cache_unfinished_req` is invoked after extend/prefill phase, `BC` was added as a child node for `A`, both nodes `A` and `BC` increase the lock reference, node `BC` become the `last_node` for the request.
+
 #### Decode Batch
-##### Step 6. Function `update_running_batch` 
+##### Step 4. Function `update_running_batch` 
   - Invoke `prepare_for_decode`
     - `req_to_token_pool` No change
     - `token_to_kv_pool`
@@ -133,7 +139,7 @@ Run `forward_extend` on the current batch, this will eventually invoke the Atten
       - For example: in above diagram, the round that generate D from C
         - We will allocate 1 slots to `out_cache_loc` for token D
 
-##### Step 7. Function `run_batch`
+##### Step 5. Function `run_batch`
 Run `forward_decode` on the current batch, this will eventually invoke the Attention Backend, who is responsible for 
 - Save the kv cache of decode token.
   - Save KV cache for decode token to `token_to_kv_pool` (Function `save_kv_cache`)
@@ -142,49 +148,44 @@ Run `forward_decode` on the current batch, this will eventually invoke the Atten
   - Q = decode token, in our example token D
   - KV = All cached tokens from `req_to_token_pool` by `out_cache_loc` including A, B, C(from previous round), D (Function `create_flashinfer_kv_indices_triton`)
 
-##### Step 8. Function `process_batch_result_decode`
-  - If the request is finished, invoke `cache_finished_req` (refer to [PLACEHOLDER] for details of `cache_finished_req` )
-  - No operation for cache is needed for unfinished request
+##### Step 6. Function `process_batch_result_decode`
+  If the request is finished, invoke `cache_finished_req` (refer to [PLACEHOLDER] for details of `cache_finished_req` ). No operation for cache is needed for unfinished request in decode phase.
+  
+  In our example, `DE` is appended to node `BC`, and the lock reference for node `A` and `BCDE` got decreased. 
 
 <!-- TODO(yangmin):  CN -->
-#### `cache_finished_req` & `cache_finished_req`
-These two functions manage the KV cache in Radix Cache, ReqToTokenPool, and TokenToKVPool after batch's forward.
+#### RadixCache `cache_finished_req` & `cache_finished_req`
+This section would go deeper on `cache_finished_req` & `cache_finished_req`'s flow.
 
-##### **Comparison: `cache_finished_req()` vs. `cache_unfinished_req()`**
+##### **Quick Overview of `cache_finished_req()` vs. `cache_unfinished_req()`**
 | Sequence | `cache_unfinished_req()` | `cache_finished_req()` |
 |------|--------------------------|--------------------------|
 | **1. Get `kv_indices`** from `req_to_token_pool.req_to_token` | - | - |
 | **2. Update Radix Cache** (`insert()`) | - | - |
 | **3. Free KV Cache** (`self.token_to_kv_pool.free()`) | - | requires verification |
-| **4. Handle `req_to_token_pool`** | Performs a **write** operation to update. | **Releases** `req_to_token_pool` as the request is completed. |
-| **5. Handle `req.last_node`** | Increases the reference count of `req.last_node`. | **Decreases** the reference count of `req.last_node`, as `req` is finished. |
+| **4. Handle `req_to_token_pool`** | **Writes and updates** `req_to_token_pool | **Releases** `req_to_token_pool` as the request is completed. |
+| **5. Handle `req.last_node`** | **Increases** the reference count of `req.last_node` | **Decreases** the reference count of `req.last_node`, as `req` is finished. |
 
 As we can observe, the core functionality is essentially the same for `cache_unfinished_req()` and `cache_finished_req()`, we are going to walk through the code for how req_to_token_pool, token_to_kv_pool and tree_cache are updated during `cache_unfinished_req()`, and explain the key difference between `cache_unfinished_req()` and `cache_finished_req()`.
 
 ##### `cache_unfinished_req`
+1. Get KV Index: Get KV index from `req_to_token_pool.req_to_token`
 
-###### 1. Get KV Index: Get KV index from `req_to_token_pool.req_to_token`
-
-###### 2. Update Radix Cache
+2. Update Radix Cache
 ```python
 new_prefix_len = self.insert(token_ids, kv_indices.clone())
 ```
 This method inserts token_ids and their corresponding kv_indices into the Radix Cache. If successful, it returns a new prefix length (new_prefix_len).
 
-###### 4. `Free KV Cache` 
-After Radix Cache being updated, there might have some duplicate nodes, for example:
-* Assume the Radix Cache already contains [A, B, C, D, E].
-* Prefill step 1: We find [A, B, C] in the Radix Cache (no need to store them again).
-* Prefill step 2: We want to add [D, E, F, G, H].
-* [D, E] are already in the cache, so only [F, G, H] must be stored anew.
-In this case [D, E] should be freed from token_to_kv_pool to avoid wasting memory.
+3. `Free KV Cache` 
 
-###### 5. Update `prefix_indices` and `last_node`
-Calls `match_prefix()` to update the request’s `prefix_indices` and `last_node`. This is important as `prefix_indices` and `last_node` will be used in next iteration.
-- `prefix_indices` is used to calculate the needed size of extend/prefill tokens.
-- `last_node` is used to keep track of a requests last node in the radix tree so that it can be used to trace back towards root node when updating lock.
+4. Update `prefix_indices` and `last_node`
+  
+    Calls `match_prefix()` to update the request’s `prefix_indices` and `last_node`. This is important as `prefix_indices` and `last_node` will be used in next iteration.
+  - `prefix_indices` is used to calculate the needed size of extend/prefill tokens.
+  - `last_node` is used to keep track of a requests last node in the radix tree so that it can be used to trace back towards root node when updating lock.
 
-###### 6. Lock Management for Memory Safety
+5. Lock Management for Memory Safety
 To prevent unintended deletion of active cache nodes. Keeping a lock on a node shields it from being freed while still needed. After above state transition, the old `last_node` is unlocked using dec_lock_ref(), allowing it to be freed when no longer in use. The new `last_node` is locked, protecting it from deletion.
 
 ##### `cache_finished_req`
@@ -192,18 +193,4 @@ To prevent unintended deletion of active cache nodes. Keeping a lock on a node s
 ###### **Similar to `cache_unfinished_req()`, `cache_finished_req()` also has the following steps:**
 1. When a request `req` is completed, its `token_ids` are stored in the **Radix Cache**. Update Radix Cache 
 2. **Release** redundant **KV Cache space** in `token_to_kv_pool` (removing duplicates).
-3. **Release `req_to_token_pool`** and **update `tree_cache`**.
-
-###### **Key Difference**
-- `cache_unfinished_req()` **writes and updates** `req_to_token_pool`, while  
-- `cache_finished_req()` **releases** `req_to_token_pool`, since the request is done.  
-- `cache_unfinished_req()` **increases** the reference count of `req.last_node`, while  
-- `cache_finished_req()` **decreases** the reference count of `req.last_node`, as it no longer needs protection.  
-
-
-In our example from above diagram, when request with token ABCDE come in, `req.token_ids = [A, B, C, D, E]`, radix cache have one token cached so we have `cached_tokens = [A]`. So when match_prefix being called `req.prefix_indices = [A]`. In `cache_finished_req`, [A] already exists in the cache, we insert [B, C, D, E], update the `prefix_len` to 5, indicating [A, B, C, D, E] is now fully cached.
-
-```python
-cached_tokens = [A, B, C, D, E]
-req.prefix_indices remains [A, B]
-```
+3. **Release `req_to_token_pool`** and **update `tree_cache`**.  
