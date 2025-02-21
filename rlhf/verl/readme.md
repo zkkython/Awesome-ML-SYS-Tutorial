@@ -30,6 +30,8 @@ PS：之前也有基于 nemo-aligner 和 OpenRLHF 做一些解析，欢迎大家
 
 因此，SPMD 的 training engine 和 SPMD 的 rollout engine 简直是绝配。然而，由于历史原因，目前主流的 rollout engine 还是以 single controller 为主的。所以，将 SGLang 由 single controller 改为 SPMD 是我们的一个重要工作目标。事实上，我们已经有了成熟的 PR，可以[参考这个 branch](https://github.com/fzyzcjy/sglang/tree/feat/overall_verl)。
 
+注：上面描述的 single controller 和 SPMD 模式只是经验上的 practice，但实际上他们描述的是：single controller 主要关注于控制流是否单点；而 SPMD 模式更关注的是分布式场景下数据执行流。即使是 single controller，也是可以使用 SPMD 模式进行数据流执行的。
+
 总之，这篇文章的开篇花费了巨大的篇幅来简述 single controller 和 multi controller，以及为什么 SGLang 需要从 single controller 改为 multi controller。理解了这些概念后，我们可以正式进入 veRL 的 introduction 了。
 
 ## Introduction
