@@ -1,9 +1,9 @@
 # KV Cache Code Walkthrough
 <!-- TODO(xiaotong):  CN -->
-This document offers a comprehensive overview of the KV cache management system within the SGLang implementation, delving into the lifecycle of requests and the pivotal components that facilitate this lifecycle, encompassing the Scheduler, Radix Cache, Attention Backend, and all the supporting resources.
+This document offers a comprehensive overview of the KV cache management system within the SGLang implementation, following lifecycle of requests and the key components that are involved in this lifecycle, including the Scheduler, Radix Cache, Attention Backend, and the global state that are maintained.
 
 To facilitate this explanation, we will make a few assumptions in our examples:
-- We use Flash Infer as backend
+- We use FlashInfer as backend
 - We use Longest Prefix as priority
 
 ## Global State
@@ -15,7 +15,7 @@ This section provides a brief overview for some of the important global state th
 KV Cache is the most important global state in the server because it can take a significant fraction of GPU Memory. There are two-level memory pools to manage KV cache. 
 
 #### `req_to_token_pool`
-- **Purpose** `req_to_token_pool` maps a request to its tokens' KV cache indices.
+- **Purpose:** `req_to_token_pool` maps a request to its tokens' KV cache indices.
 - **Layout:** Max Allowed Requests Number * Max Allowed Tokens Number
 - **Access:** 
     - Dim0: `req_pool_indices`
@@ -23,7 +23,7 @@ KV Cache is the most important global state in the server because it can take a 
     - Value: `out_cache_loc` for token
   
 #### `token_to_kv_pool`
-- **Purpose** `token_to_kv_pool` maps a token KV cache indices to its KV cache data, `token_to_kv_pool` has model-specific implementation like MHA, MLA, DoubleSparse.
+- **Purpose:** `token_to_kv_pool` maps a token KV cache indices to its KV cache data, `token_to_kv_pool` has model-specific implementation like MHA, MLA, DoubleSparse.
 - **Layout:** Number of Layers * Max Allowed Tokens Number * Number of Head * Head Dimension
 - **Access:** 
     - Dim0: `layer_id`
@@ -33,7 +33,7 @@ KV Cache is the most important global state in the server because it can take a 
     - Value: `cache_k` for k_buffer and `cache_v` for v_buffer
 
 #### `tree_cache`
-- **Purpose** A tree structure to enhance the reuse of prefix KV Cache across requests.
+- **Purpose:** A tree structure to enhance the reuse of prefix KV Cache across requests.
 - **Access:**
   - Key: Token ID
   - Value: Token's KV Indices
@@ -43,28 +43,28 @@ KV Cache is the most important global state in the server because it can take a 
 The `Scheduler` component is responsible for managing active requests. The following core global state are utilized to maintain these active requests in `Scheduler`.
 
 #### `waiting_queue`
-- **Purpose** The Waiting Queue is a data structure designed to hold active requests. It dynamically reorders these requests based on priority or available memory to optimize batch processing tasks.
-- **Important Notes** 
+- **Purpose:** The Waiting Queue is a data structure designed to hold active requests. It dynamically reorders these requests based on priority or available memory to optimize batch processing tasks.
+- **Some Additional Key Points** 
   - **Enqueue** 
     - Newly arrived requests are enqueued into the waiting queue.
     - Requests that are returned from `retract_decode`.
   - **Dequeue** The highest priority requests are dequeued from the queue to form a batch.
 
 #### `new_batch`
-- **Purpose**: A batch of requests that are ready for prefill/extend stage.
-- **Important Notes** 
+- **Purpose:**: A batch of requests that are ready for prefill/extend stage.
+- **Some Additional Key Points** 
   - **Chunked Prefill**: If a request requires more tokens than the available memory (`remaining_tokens`), it may be **chunked** into smaller parts.
   - Requests in `new_batch` would go through prefill/extend.
   - After prefill/extend, `new_batch` will transit to **Global Batch** for the upcoming iteration.  
 
 #### `running_batch`  
-- **Purpose**: A batch of requests that are ready for decode stage.
-- **Important Notes** 
+- **Purpose:**: A batch of requests that are ready for decode stage.
+- **Some Additional Key Points** 
   - **Retract**: If available memory is insufficient during decode, the scheduler may retract certain requests (via `retract_decode`) from the `running_batch`, returning them to the waiting queue for later processing.
 
 #### `cur_batch`
-- **Purpose**: The batch of requests that are currently being processed in the main loop of Scheduler (`run_batch` function).  
-- **Important Notes**
+- **Purpose:**: The batch of requests that are currently being processed in the main loop of Scheduler (`run_batch` function).  
+- **Some Additional Key Points**
   - `cur_batch` is assigned in `event_loop_normal`.
   - The logic of forming `cur_batch`is: If there's requests ready for prefill (`new_batch`) in this cycle, use `new_batch` as `cur_batch`. Otherwise, `cur_batch` would process those that are ready for decode, thus use `running_batch` as `cur_batch`.  
 
@@ -82,7 +82,7 @@ The figure illustrates how the **Scheduler** directs requests from the `waiting_
 
 3. **Forming the New Batch**: Scheduler would check if a `new_batch` could be formed (in `get_new_batch_prefill`), all the requests that can fit available memory would be packed in the batch. If the size of the last request to put into the batch is larger than the remaining available memory, the request will be chunked as `being_chunked_request`. In out example diagram, the Scheduler pulls requests from the `waiting_queue` and creates a `new_batch`(e.g., `Req 6`, `Req 5b`, `Req 5b` is the `being_chunked_request`), and use the `new_batch` as `cur_batch`. Not demonstrated in the diagram but if there is no `new_batch`, the `running_batch` will be filtered(e.g., `Req 1`, `Req 0` will be kept while `Old Finished Req` will be removed), and then be used as `cur_batch`. Also, if the GPU memory is not enough, some decoding requests may be retracted according to certain retract policy. During the `retract_decode` phase, in the diagram, `Req 0` is retracted.
 
-4. **Running the Batch**: Once the **Global Batch** is determined (prefill vs. decode), `run_batch` is called to run a forward pass.
+4. **Running the Batch**: Once the **Global Batch** is determined, `run_batch` is called to run a forward pass.
 
 5. **Result Processing**: After `run_batch`, the Scheduler calls `process_batch_result` to to determine which requests have finished and which continue. In our example, `Req 6` is finished and turns grey, `Req 5b` remains unfinished.
 
