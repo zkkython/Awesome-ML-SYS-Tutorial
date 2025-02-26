@@ -1,6 +1,6 @@
 # SGLang Code Walk Through
 
-## [English version](./README-eng.md) | [简体中文](./README.md)
+## [English version](./README-eng.md) | [简体中文](./readme-CN.md)
 
 <!-- [TODO: 概念和代码的名字？概念是概念，代码是代码，对我们的 workflow 图明确点，然后把 KV cache management 加进来] -->
 
