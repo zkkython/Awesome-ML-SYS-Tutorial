@@ -5,7 +5,7 @@ My learning notes/codes for ML SYS.
 
 一直以来对 ML + SYS 很感兴趣，苦于本科没有学好 ML，更没学好 SYS，但是读博了觉得自己应该可以在这方面试一试。
 
-有如此打算，一来是我发觉组里大多同学做的是 ML Theory + Application，但是真的把一个 Theory 落到一个良好的 Application 上都有一定阻碍。譬如组里之前发的两篇工作 [SPIN](https://github.com/uclaml/SPIN) 和 [SPPO](https://github.com/uclaml/SPPO)，都有很好的影响力，但是工程实现不尽理想。虽然这并不妨碍工作的价值，但是如果在工程/系统上优化好，想来可以有更好的影响力。
+有如此打算，一来是我发觉组里很多能力出众的高年级学长们做的是 ML Theory + Application。不过，真的把一个 Theory 落到一个良好的 Application 上，即便是他们这样让我敬佩的 theory researcher，也有着一定挑战。在我入学前，组里有两篇让我眼前一亮的工作 [SPIN](https://github.com/uclaml/SPIN) 和 [SPPO](https://github.com/uclaml/SPPO)。工作本身都有非常棒的价值，但是如果在工程/系统上优化好，想来可以有更好的影响力。
 
 此外，博士入学前的暑假，我和组里同学做了一个 In-context Learning for Agent 的工作 [COPS](https://github.com/uclaml/COPS)，比较符合我的审美。我们就两个人主力干活，一个大哥推理论，而我负责在工程/系统上实现。这种工作模式让我的体感非常舒适，基于此，我甚至得出一个粗糙的结论：
 
