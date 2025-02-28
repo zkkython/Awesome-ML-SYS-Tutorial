@@ -9,54 +9,84 @@ To facilitate this explanation, we will make a few assumptions in our examples:
 - We don't enable `enable_mixed_chunck`.
 - We use `Radix Cache` as `tree_cache`.
 
+<!-- TODO:  这里概述下我们整体的叙述逻辑，类似于有一个 table of content，讲述先讲了什么，然后讲了什么，最后讲了什么 -->
+
 ## Global State
 
 This section provides a brief overview for some of the important global state that are maintained across requests.
+
 <!-- TODO(xiaotong):  add prefill vs extend's difference -->
 
 ### KV Cache & Memory Pools
 
-KV Cache is the most important global state in the server because it can take a significant fraction of GPU Memory. There are two-level memory pools to manage KV cache. 
+KV Cache is among the most important global states in the server. 
 
-#### `req_to_token_pool`
-- **Purpose:** `req_to_token_pool` maps a request to its tokens' KV cache indices.
-- **Layout:** Max Allowed Requests Number (`max-running-requests`) * Max Allowed Tokens Number (`max-total-tokens`)
+<!-- TODO: 这里解释下 sglang 里面 kv cache 在何处被使用到 -->
+
+There are two-level memory pools to manage KV cache. 
+
+**`req_to_token_pool`**
+
+`req_to_token_pool` maps a request to its tokens' KV cache indices. It's shape is `max-running-requests * max-total-tokens`, i.e., the maximum number of requests to run concurrently (or the maxium batch size) * the maximum number of tokens that can be stored into the KV cache. Use mainly for debugging.
+
 - **Access:** 
     - Dim0: `req_pool_indices`
     - Dim1: token positions in req, starting from 0, 1, 2...
     - Value: `out_cache_loc` for token
+
+  <!-- TODO：这里如果按照顺序来读的话，req_pool_indices 的意义还方便猜测，”大概是req_to_token_pool 的第一层 index，索引到这个 batch 里面的具体某个 req，然后第二层是 request 里面的 token 吧。但是 out_cache_loc 的意义呢？“-->
   
-#### `token_to_kv_pool`
-- **Purpose:** `token_to_kv_pool` maps a token KV cache indices to its KV cache data, `token_to_kv_pool` has model-specific implementation like `MHA`, `MLA`, `DoubleSparse`.
-- **Layout:** Number of Layers * Max Allowed Tokens Number Per Layers * Number of Head * Head Dimension
+**`token_to_kv_pool`**
+
+<!-- TODO: 这里解释下 req_to_token_pool 和 token_to_kv_pool 的联系，我理解是 req_to_token_pool 的 out_cache_loc 是 token_to_kv_pool 的 index，然后 token_to_kv_pool 的 cache_k 和 cache_v 是 token 具体的 KV cache 值？-->
+
+Following `req_to_token_pool` which maps a request to its tokens' KV cache indices, `token_to_kv_pool` further maps a token's KV cache indices to its real KV cache data. Note that , for different attention implementation, like [`MHA`](https://arxiv.org/abs/1706.03762), [`MLA`](https://arxiv.org/abs/2405.04434), [`Double Sparsity`](https://arxiv.org/abs/2408.07092), `token_to_kv_pool` could have different implementation. The shape of `token_to_kv_pool` is `Number of Layers in the Model * Max Allowed Tokens Number Per Layers * Number of Head * Head Dimension`.
+
+<!-- TODO: 我还是不理解 out_cache_loc 的含义-->
+
 - **Access:** 
     - Dim0: `layer_id`
     - Dim1: `out_cache_loc`
     - Dim2: Head
     - Dim3: Head Dimension
     - Value: `cache_k` for k_buffer and `cache_v` for v_buffer
+
 <!-- TODO(shuai):  confirm this Max Allowed Tokens Number Per Layers -->
 
-#### `tree_cache`
-- **Purpose:** A tree structure to enhance the reuse of prefix KV Cache across requests.
+**`tree_cache`**
+
+<!-- TODO: 解释 tree_cache 和 req_to_token_pool、token_to_kv_pool 的关系 -->
+
+`tree_cache` is a tree structure to enhance the reuse of prefix KV Cache across requests.
+
+<!-- TODO: 我不太理解了，如果 key 是 token id 的话，同一个 token 在多个 request 里面都有的话，怎么唯一得到这个 token 在某个 request 里的 KV cache 呢？或者说，我觉得我们得先讲清楚 tree cache 和 kv cache pool 彼此的使用方式，查找方式，再讨论具体的数据结构。 -->
+
 - **Access:**
   - Key: Token ID
   - Value: Token's KV Indices
 
 ### Active Requests Management
 
-The `Scheduler` component is responsible for managing active requests. The following core global state are utilized to maintain these active requests in `Scheduler`.
+<!-- TODO: 如果让我来写的话，整篇文章我会先从 scheduler 开始。在 xxx 文章中，我们已经介绍了 SGLang 一个 request 的生命周期。我们接着从 scheduler 开始，先先从 request 开始梳理 scheduler 如何管理 requests，再细致介绍如何管理 kv cache。现在这个写法，前后链接有点不清晰。-->
 
-#### `waiting_queue`
-- **Purpose:** The Waiting Queue is a data structure designed to hold active requests. It dynamically reorders these requests based on priority or available memory to optimize batch processing tasks.
-- **Some Additional Key Points** 
-  - **Enqueue** 
-    - Newly arrived requests are enqueued into the waiting queue.
-    - Requests that are returned from `retract_decode`.
-  - **Dequeue** The highest priority requests (in our assumption, the requests with longest prefix) are dequeued from the queue to form a batch.
+The `Scheduler` manages active requests by utilizing these following core global states.
 
-#### `new_batch`
-- **Purpose:**: A batch of requests that are ready for prefill/extend stage.
+**`waiting_queue`**
+
+<!-- TODO: 具体是什么数据结构，按名字来说是 queue，先进先出，但实际上不是先进先出的？-->
+
+The Waiting Queue is a data structure designed to hold active requests. It dynamically changes the order of requests based on priority or available memory to optimize batch processing time.
+
+Newly arrived requests are enqueued into the waiting queue. Requests that are returned from `retract_decode`. The highest priority requests (in our assumption, the requests with longest prefix) are dequeued from the queue to form a batch.
+
+<!-- TODO: Requests that are returned from `retract_decode`. 这句话的上下文呢？没看懂什么意思-->
+
+**`new_batch`**
+
+A batch of requests that are ready for prefill/extend stage.
+
+- **Chunked Prefill**: If a request requires more tokens than the available memory (`remaining_tokens`), it may be **chunked** into smaller parts.
+
 - **Some Additional Key Points** 
   - **Chunked Prefill**: If a request requires more tokens than the available memory (`remaining_tokens`), it may be **chunked** into smaller parts.
   - Requests in `new_batch` would go through prefill/extend.
