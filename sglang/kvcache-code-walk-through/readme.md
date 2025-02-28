@@ -6,8 +6,8 @@ To facilitate this explanation, we will make a few assumptions in our examples:
 - We use FlashInfer as backend.
 - We use Longest Prefix as priority for requests in `waiting_queue` (e.g., the longest-prefix-match scheduling in SGLang paper).
 - We don't consider jump forward decoding/speculative decoding.
-- We don't enable `enable_mixed_chunck`
-- We use `Radix Cache` as `tree_cache` 
+- We don't enable `enable_mixed_chunck`.
+- We use `Radix Cache` as `tree_cache`.
 
 ## Global State
 
