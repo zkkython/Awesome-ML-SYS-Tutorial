@@ -102,7 +102,6 @@ A batch of requests that are ready for prefill/extend stage.
 - **Some Additional Key Points**
   - `cur_batch` is assigned in `event_loop_normal`.
   - The logic of forming `cur_batch`is: If there's requests ready for prefill (`new_batch`) in this cycle, use `new_batch` as `cur_batch`. Otherwise, `cur_batch` would process those that are ready for decode, thus use `running_batch` as `cur_batch`.  
-<!-- TODO(yangming): change the diagram -->
 
 ## Scheduler Overview
 
@@ -116,12 +115,38 @@ The figure illustrates how the **Scheduler** directs requests from the `waiting_
 The Scheduler continuously calls `recv_requests` to collect newly arrived requests, validate them and place them into the `waiting_queue`. In our example, `Req 7` are received and enqueued.
 
 #### 2. **Merge Batches**
-Before form the new batch for this round, Scheduler would merge the `cur_batch` from last round into `running_batch`. (In the diagram, `cur_batch` from last round are shown as `cur_batch(i-1)` and `running_batch` are shown as `running_batch(i-1)`. In our example, `Req 0` and `Req 1` will be merged together into the new `running_batch`. **Merge Batch** will also remove the last round `being_chunked_request`. `being_chunked_request` is the chunked prefilled request generated during the `get_new_batch_prefill` process. (In the diagram, there are finished `being_chunked_request` e.g., `Req 5a` which means the first part of `Req 5`), we will remove this as we do not want them to do decode phase.) 
-<!-- TODO(yangming):  1. add why we would remove 2. add how req5a req5b req5c's being chuncked, and how they are being used in the global batch -->
+Before form the new batch for this round, Scheduler would merge the `cur_batch` from last round into `running_batch`. In the diagram, `cur_batch` from last round are shown as `cur_batch(i-1)` and `running_batch` are shown as `running_batch(i-1)`. In our example, `Req 0` and `Req 1` will be merged together into the new `running_batch`. 
+
+During this process, the scheduler also removes the last round's `being_chunked_request`. These chunked requests (like `Req 5a`) are temporary fragments created solely for prefill operations to store KV cache, and are not meant to proceed to the decode phase. They serve their purpose once the KV cache is stored and should be removed.
+
+To better understand the chunking process, let's look at how `Req 5` is handled:
+1. Initially, `Req 5` enters the waiting queue as a single long request
+2. During the first prefill attempt, due to memory constraints, it's split into `Req 5a` and `Req 5b`
+3. After `Req 5a` is processed and its KV cache is stored, it's removed as a `being_chunked_request`
+4. In the current round, when trying to process `Req 5b`, it still exceeds the resource limit
+5. Therefore, `Req 5b` is further split into a new `Req 5b` (which goes into the global batch) and `Req 5c` (which stays in the waiting queue)
 
 #### 3. **Forming the New Batch**:
-Scheduler would check if a `new_batch` could be formed (in `get_new_batch_prefill`), all the requests that can fit available memory would be packed in the batch. If the size of the last request to put into the batch is larger than the remaining available memory, the request will be chunked as `being_chunked_request`. In out example diagram, the Scheduler pulls requests from the `waiting_queue` and creates a `new_batch`(e.g., `Req 6`, `Req 5b`, `Req 5b` is the `being_chunked_request`), and use the `new_batch` as `cur_batch`. Not demonstrated in the diagram but if there is no `new_batch`, the `running_batch` will be filtered(e.g., `Req 1`, `Req 0` will be kept while `Old Finished Req` will be removed), and then be used as `cur_batch`. Also, if the GPU memory is not enough, some decoding requests may be retracted according to certain retract policy. During the `retract_decode` phase, in the diagram, `Req 0` is retracted.
-<!-- TODO(yangming): 0. structure the wording same with how diagram structure 1. add reorder section with assumption that we are using longest prefix 2. explain the logic that its pulled in sequence, pull req6 because -> pull req5b because -->
+The process of forming a new batch consists of three main steps:
+
+1. **Reorder Waiting Queue**:
+   - The scheduler reorders requests based on its scheduling policy
+   - By default, it prioritizes requests with the longest prefix in the radix cache
+   - This maximizes the reuse of existing KV cache entries
+
+2. **Request Selection**:
+   - Requests are selected one by one from the reordered queue
+   - In our example:
+     - `Req 6` is selected first as it has the longest prefix match in the cache
+     - `Req 5b` is selected next as there's still available memory
+     - However, `Req 5b` exceeds the memory limit and is further split into `Req 5b` and `Req 5c`
+     - `Req 5b` is added to the new batch while `Req 5c` remains in the waiting queue
+
+3. **Prepare for Extend**:
+   - Once the new batch is formed, space is allocated for the selected requests
+   - This includes allocating space in both req_to_token and token_to_kv pools
+
+If no new batch can be formed, the scheduler will filter the running batch (removing finished requests like `Old Finished Req`) and use it as the current batch. Additionally, if GPU memory becomes insufficient, some decoding requests may be retracted according to the retraction policy. In our example, `Req 0` is retracted during this process.
 
 #### 4. **Running the Batch**: 
 Once the **Global Batch** is determined, `run_batch` is called to run a forward pass.
