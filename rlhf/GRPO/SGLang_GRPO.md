@@ -13,7 +13,7 @@ GRPO is composed of four parts:
 - Estimating the KL divergence
 - Computing the loss
 
-    ![Screenshot 2025-02-17 at 3.41.27 PM.png](GRPO%2019d651cb22e5804c8588fbadd8253856/Screenshot_2025-02-17_at_3.41.27_PM.png)
+    ![Screenshot 2025-02-17 at 3.41.27 PM.png](GRPO_Images/GRPO_overall_arch.png)
 
 
 ## 1.1 Generating completions
@@ -24,7 +24,7 @@ At each training step, we sample a batch of prompts and generate a set of $G$ co
 
 For each of the $G$ sequences, we compute the reward using a **reward model**. To align with the comparative nature of reward models—typically trained on datasets of comparisons between outputs for the same question—the advantage is calculated to reflect these relative comparisons. It is normalized as follows:
 
-![Screenshot 2025-02-17 at 10.54.25 PM.png](GRPO%2019d651cb22e5804c8588fbadd8253856/Screenshot_2025-02-17_at_10.54.25_PM.png)
+![Screenshot 2025-02-17 at 10.54.25 PM.png](GRPO_Images/normalized_advantages.png)
 
 This approach gives the method its name: **Group Relative Policy Optimization (GRPO)**.
 
@@ -48,20 +48,20 @@ $$
 
 KL divergence is estimated using the approximator, which is defined as follows:
 
-![Screenshot 2025-02-17 at 10.57.14 PM.png](GRPO%2019d651cb22e5804c8588fbadd8253856/Screenshot_2025-02-17_at_10.57.14_PM.png)
+![Screenshot 2025-02-17 at 10.57.14 PM.png](GRPO_Images/KL_Divergence.png)
 
 ## 1.4 Computing the loss
 
 The objective is to **maximize the advantage** while ensuring that the model **remains close to the reference policy**. Consequently, the loss is defined as follows:
 
-![Screenshot 2025-02-17 at 11.03.13 PM.png](GRPO%2019d651cb22e5804c8588fbadd8253856/Screenshot_2025-02-17_at_11.03.13_PM.png)
+![Screenshot 2025-02-17 at 11.03.13 PM.png](GRPO_Images/GRPO_Loss_simplified.png)
 
 - the first term represents the scaled advantage
 - the second term penalizes deviations from the reference policy through KL divergence.
 
 In the original paper, this formulation is generalized to account for multiple updates after each generation by leveraging the **clipped surrogate objective**:
 
-![Screenshot 2025-02-18 at 12.50.52 AM.png](GRPO%2019d651cb22e5804c8588fbadd8253856/Screenshot_2025-02-18_at_12.50.52_AM.png)
+![Screenshot 2025-02-18 at 12.50.52 AM.png](GRPO_Images/GRPO_Loss.png)
 
 where clip(⋅,1−*ϵ*,1+*ϵ*) ensures that updates stay close to the reference policy by keeping the policy ratio between 1−*ϵ* and 1+*ϵ*. However, since TRL follows the original paper in performing only one update per generation, we can simplify the loss to the first form.
 
@@ -81,9 +81,9 @@ The GRPO Trainer logs the following metrics:
 
 [Speed up training with vLLM](https://huggingface.co/docs/trl/main/en/speeding_up_training?vllm+examples=GRPO#vllm-for-fast-generation-in-online-methods)
 
-![Screenshot 2025-02-17 at 11.13.02 PM.png](GRPO%2019d651cb22e5804c8588fbadd8253856/Screenshot_2025-02-17_at_11.13.02_PM.png)
+![Screenshot 2025-02-17 at 11.13.02 PM.png](GRPO_Images/Usage.png)
 
-![Screenshot 2025-02-17 at 11.14.39 PM.png](GRPO%2019d651cb22e5804c8588fbadd8253856/Screenshot_2025-02-17_at_11.14.39_PM.png)
+![Screenshot 2025-02-17 at 11.14.39 PM.png](GRPO_Images/Parameters.png)
 
 ## 2.2 How vLLM is used in [grpo_trainer.py](https://github.com/huggingface/trl/blob/main/trl/trainer/grpo_trainer.py):
 
