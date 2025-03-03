@@ -2,7 +2,7 @@
 
 ## 问题背景
 
-对于 veRL 而言，inference engine 需要支持 SPMD，具体的 motivation 可以参考此[链接](https://github.com/vllm-project/vllm/issues/11400)。
+对于 veRL 而言，inference engine 需要支持 SPMD，具体的 motivation 可以参考此[链接](https://github.com/vllm-project/vllm/issues/11400)。SGLang 团队已经 merge 了相关 PR，可以参考[此处](https://github.com/sgl-project/sglang/commit/e3e0bc50a9d9644a183bc6dbb55919232196971d)。
 
 这是  veRL 团队和 SGLang 团队开发的 dev release，旨在将 SGLang 接入 veRL 的训练流程中。目前虽然落后主分支有一定距离，但是会在近期完成合并，欢迎大家尝鲜、体验并且提供反馈。
 
@@ -13,6 +13,8 @@
 ```bash
 python3 -m venv ~/.python/verl-sglang
 source ~/.python/verl-sglang/bin/activate
+python3 -m pip install --upgrade pip
+python3 -m pip install --upgrade uv
 ```
 
 ### 安装 dev 分支的 veRL
@@ -22,18 +24,21 @@ git clone https://github.com/ocss884/verl verl-sglang
 cd verl-sglang
 git checkout dev_sglang
 git pull --no-ff
-pip install .
+python3 -m uv pip install .
+cd ..
 ```
 
-### 安装 dev 分支的 SGLang
+### Install SGLang Main Branch From Source
 
-注意`--config-settings`需要更新到最近的`pip`  
+这里需要安装最新的 SGLang main branch：
+
 ```bash
-pip install --upgrade pip
-cd ..
+# Use the last main branch
 git clone https://github.com/sgl-project/sglang.git
-cd verl-sglang
-pip install -e ../sglang/python "sglang[all]" --config-settings editable_mode=strict --find-links "https://flashinfer.ai/whl/cu124/torch2.5/flashinfer-python/" 
+cd sglang
+
+python3 -m uv pip install -e "python[all]" --find-links https://flashinfer.ai/whl/cu124/torch2.5/flashinfer-python
+cd ..
 ```
 
 这个过程可能出现若干问题，这里列出一些常见问题和解决方法：
@@ -42,11 +47,11 @@ pip install -e ../sglang/python "sglang[all]" --config-settings editable_mode=st
 
 `ERROR: pip’s dependency resolver does not currently take into account all the packages that are installed. This behaviour is the source of the following dependency conflicts. verl 0.2 requires vllm<=0.6.3, but you have vllm 0.6.4.post1 which is incompatible.`
 
-可以直接忽视。
+实际上，verl-SGLang 发行版不需要 vllm 兼容，可以直接忽视。
 
 2. **flash-attn 不存在**
 
-可能虚拟环境不一定有 wheel 和 packaging，前一步 flash_attn 安装失败。这里需要手动再安装一次：
+可能虚拟环境不一定有 `wheel` 和 `packaging`，会导致 `flash_attn` 安装失败。这里需要手动再安装一次：
 
 ```bash
 pip install wheel, packaging
@@ -62,13 +67,32 @@ export LD_LIBRARY_PATH=/usr/local/cuda-12.4/lib64:$LD_LIBRARY_PATH
 export CUDA_HOME=“/usr/local/cuda-12.4”
 ```
 
+4. `from torch._C import *` 报错
+
+这个太经典了，torch 各种 symbol 不匹配，我一般的解决方案如下：
+
+```bash
+
+# 查询自己的 python 路径
+which python
+# 输出为 /data/chayenne/.python/verl-sglang/bin/python
+
+# 接着找到 nvjitlink 的路径，操作类似
+
+ls /data/chayenne/.python/verl-sglang/lib64/python3.11/site-packages/nvidia/nvjitlink/lib/
+
+# 把 nvjitlink 的路径添加到 LD_LIBRARY_PATH 中
+
+export LD_LIBRARY_PATH=/data/chayenne/.python/verl-sglang/lib64/python3.11/site-packages/nvidia/nvjitlink/lib/:$LD_LIBRARY_PATH
+```
+
 成功安装后，可以检测下相关库的配置：
 
 - sglang 0.4.3.post2 
-- torch2.5.1+cu124  
+- torch2.5.1
 - flashinfer 0.2.2.post1
-- verl 0.2 
-- ray 2.42.1  
+- verl 0.2.0.dev0
+- ray 2.42.1
 - flash-attn 2.7.4.post1  
 
 ### 安装 megatron 作为 veRL 的 training engine
@@ -126,23 +150,24 @@ sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-13 60
 首先构造数据集，默认保存至 `~/data`。
 
 ```bash
+cd verl-sglang
 python3 examples/data_preprocess/gsm8k.py
 python3 examples/data_preprocess/math_dataset.py
 ```
 
-可以直接运行 `bash test_sglang.sh` 测试 SGLang 的 PPO 功能。具体运行的命令如下：
+可以在四卡 GPU 上直接运行 `bash test_sglang.sh` 测试 SGLang 的 PPO 功能。具体运行的命令如下：
 
 <details>
 <summary>运行 PPO 的命令</summary>
 
 ```bash
-DATA_DIR=$HOME/data/gsm8k
+DATA_DIR=~/data/gsm8k
 python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.name=sglang \
     data.train_files=$DATA_DIR/train.parquet \
     data.val_files=$DATA_DIR/test.parquet \
-    data.train_batch_size=64 \
-    data.val_batch_size=1312 \
+    data.train_batch_size=32 \
+    data.val_batch_size=1024 \
     data.max_prompt_length=512 \
     data.max_response_length=1 \
     actor_rollout_ref.model.path=Qwen/Qwen2-7B-Instruct \
@@ -154,7 +179,7 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.actor.fsdp_config.param_offload=True \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=True \
     actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=16 \
-    actor_rollout_ref.rollout.tensor_model_parallel_size=2 \
+    actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
     actor_rollout_ref.rollout.gpu_memory_utilization=0.4 \
     actor_rollout_ref.ref.log_prob_micro_batch_size=16 \
     actor_rollout_ref.ref.fsdp_config.param_offload=True \
@@ -178,11 +203,16 @@ python3 -m verl.trainer.main_ppo \
 ```
 </details>
 
+### 对拍指令
 
-小对拍需要准备一台8卡机器，注意小对拍默认会使用wandb和环境变量WANDB_API_KEY记录训练metrics，如不想记录则删除`trainer.logger=['console','wandb']`中的wandb。该实验预计在8xH100上运行3h40m。命令修改自`examples/ppo_trainer/run_qwen2-7b_seq_balance.sh`。  
-可以直接运行`bash run_sgl_qwen2-7b_seq_balance.sh`来启动对拍，具体命令如下
+准备一台 8 卡机器，注意对拍默认会使用 `wandb` 和环境变量 `WANDB_API_KEY` 记录训练metrics，如不想记录则删除 `trainer.logger=['console','wandb']` 中的 `wandb`。此脚本在 8 x H100 上运行 3h40m，修改自 `examples/ppo_trainer/run_qwen2-7b_seq_balance.sh`。  
+
+可以直接运行 `bash run_sgl_qwen2-7b_seq_balance.sh`来 启动对拍。
+
+具体命令如下
+
 <details>
-<summary>SGLag小对拍命令</summary>
+<summary>SGLang 对拍</summary>
 set -x
 gsm8k_train_path=$HOME/data/gsm8k/train.parquet
 gsm8k_test_path=$HOME/data/gsm8k/test.parquet
