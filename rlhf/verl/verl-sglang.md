@@ -54,8 +54,9 @@ cd ..
 可能虚拟环境不一定有 `wheel` 和 `packaging`，会导致 `flash_attn` 安装失败。这里需要手动再安装一次：
 
 ```bash
-pip install wheel, packaging
-pip install flash-attn --no-build-isolation --no-deps
+python3 -m uv pip install wheel
+python3 -m uv pip install packaging
+python3 -m uv pip install flash-attn --no-build-isolation --no-deps
 ```
 
 3. **安装 flash_attn 时出现 CUDA ERROR**
@@ -166,28 +167,28 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.name=sglang \
     data.train_files=$DATA_DIR/train.parquet \
     data.val_files=$DATA_DIR/test.parquet \
-    data.train_batch_size=32 \
-    data.val_batch_size=1024 \
+    data.train_batch_size=4 \
+    data.val_batch_size=64 \
     data.max_prompt_length=512 \
     data.max_response_length=1 \
     actor_rollout_ref.model.path=Qwen/Qwen2-7B-Instruct \
     actor_rollout_ref.actor.optim.lr=1e-6 \
     actor_rollout_ref.model.use_remove_padding=True \
-    actor_rollout_ref.actor.ppo_mini_batch_size=64 \
-    actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=16 \
+    actor_rollout_ref.actor.ppo_mini_batch_size=4 \
+    actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=4 \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
     actor_rollout_ref.actor.fsdp_config.param_offload=True \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=True \
-    actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=16 \
+    actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=4 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
     actor_rollout_ref.rollout.gpu_memory_utilization=0.4 \
-    actor_rollout_ref.ref.log_prob_micro_batch_size=16 \
+    actor_rollout_ref.ref.log_prob_micro_batch_size=1 \
     actor_rollout_ref.ref.fsdp_config.param_offload=True \
     critic.optim.lr=1e-5 \
     critic.model.use_remove_padding=True \
     critic.model.path=Qwen/Qwen2-7B-Instruct \
     critic.model.enable_gradient_checkpointing=True \
-    critic.ppo_micro_batch_size=16 \
+    critic.ppo_micro_batch_size=4 \
     critic.model.fsdp_config.param_offload=True \
     critic.model.fsdp_config.optimizer_offload=True \
     algorithm.kl_ctrl.kl_coef=0.001 \
