@@ -28,14 +28,17 @@ pip install .
 ### 安装 dev 分支的 SGLang
 
 ```bash
-pip install "sglang[all] @ git+https://github.com/fzyzcjy/sglang.git/@feat/overall_verl#egg=sglang&subdirectory=python" torch==2.5.1+cu121 --extra-index-url https://download.pytorch.org/whl/cu121 --find-links https://flashinfer.ai/whl/cu121/torch2.4/flashinfer-python/
+cd ..
+git clone https://github.com/sgl-project/sglang.git
+cd verl-sglang
+pip install -e ../sglang/python "sglang[all]" --config-settings editable_mode=strict --find-links https://flashinfer.ai/whl/cu124/torch2.5/flashinfer-python/" 
 ```
 
 这个过程可能出现若干问题，这里列出一些常见问题和解决方法：
 
 1. **vllm dependency 冲突**
 
-`ERROR: pip’s dependency resolver does not currently take into account all the packages that are installed. This behaviour is the source of the following dependency conflicts. verl 0.1 requires vllm<=0.6.3, but you have vllm 0.6.4.post1 which is incompatible.`
+`ERROR: pip’s dependency resolver does not currently take into account all the packages that are installed. This behaviour is the source of the following dependency conflicts. verl 0.2 requires vllm<=0.6.3, but you have vllm 0.6.4.post1 which is incompatible.`
 
 可以直接忽视。
 
@@ -50,19 +53,19 @@ pip install flash-attn --no-build-isolation --no-deps
 
 3. **安装 flash_attn 时出现 CUDA ERROR**
 
-如果出现 `CUDA ERROR`，尝试修改 `CUDA_HOME` 和 `LD_LIBRARY_PATH` 到本地的 cuda，我这里是 `12.1`。
+如果出现 `CUDA ERROR`，尝试修改 `CUDA_HOME` 和 `LD_LIBRARY_PATH` 到本地的 cuda，我这里是 `12.4`。
 
-```bash
-export LD_LIBRARY_PATH=/usr/local/cuda-12.1/lib64:$LD_LIBRARY_PATH
-export CUDA_HOME=“/usr/local/cuda-12.1”
+```
+export LD_LIBRARY_PATH=/usr/local/cuda-12.4/lib64:$LD_LIBRARY_PATH
+export CUDA_HOME=“/usr/local/cuda-12.4”
 ```
 
 成功安装后，可以检测下相关库的配置：
 
-- sglang 0.4.1.post5  
-- torch2.5.1+cu121  
-- flashinfer 0.1.6+cu121torch2.4  
-- verl 0.1  
+- sglang 0.4.3.post2 
+- torch2.5.1+cu124  
+- flashinfer 0.2.2.post1
+- verl 0.2 
 - ray 2.42.1  
 - flash-attn 2.7.4.post1  
 
@@ -118,10 +121,11 @@ sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-13 60
 
 ## 测试 PPO 功能
 
-首先构造数据集，默认保存至 `~/data/gsm8k`。
+首先构造数据集，默认保存至 `~/data`。
 
 ```bash
 python3 examples/data_preprocess/gsm8k.py
+python3 examples/data_preprocess/math_dataset.py
 ```
 
 可以直接运行 `bash test_sglang.sh` 测试 SGLang 的 PPO 功能。具体运行的命令如下：
@@ -170,5 +174,60 @@ python3 -m verl.trainer.main_ppo \
     trainer.test_freq=10 \
     trainer.total_epochs=2 2>&1 | tee verl_demo.log
 ```
+</details>
 
+
+小对拍需要准备一台8卡机器，注意小对拍默认会使用wandb和环境变量WANDB_API_KEY记录训练metrics，如不想记录则删除`trainer.logger=['console','wandb']`中的wandb。该实验预计在8xH100上运行3h40m。命令修改自`examples/ppo_trainer/run_qwen2-7b_seq_balance.sh`。  
+可以直接运行`bash run_sgl_qwen2-7b_seq_balance.sh`来启动对拍，具体命令如下
+<details>
+<summary>SGLag小对拍命令</summary>
+set -x
+gsm8k_train_path=$HOME/data/gsm8k/train.parquet
+gsm8k_test_path=$HOME/data/gsm8k/test.parquet
+math_train_path=$HOME/data/math/train.parquet
+math_test_path=$HOME/data/math/test.parquet
+train_files="['$gsm8k_train_path', '$math_train_path']"
+test_files="['$gsm8k_test_path', '$math_test_path']"
+TIME=$(date +"%Y-%m-%d-%H-%M")
+
+python3 -m verl.trainer.main_ppo \
+    data.train_files="$train_files" \
+    data.val_files="$test_files" \
+    data.train_batch_size=2048 \
+    data.max_prompt_length=4096 \
+    data.max_response_length=4096 \
+    actor_rollout_ref.model.path=Qwen/Qwen2-7B-Instruct \
+    actor_rollout_ref.actor.optim.lr=1e-6 \
+    actor_rollout_ref.model.use_remove_padding=True \
+    actor_rollout_ref.model.enable_gradient_checkpointing=True \
+    actor_rollout_ref.actor.ppo_mini_batch_size=512 \
+    actor_rollout_ref.actor.use_dynamic_bsz=True \
+    actor_rollout_ref.actor.ppo_max_token_len_per_gpu=24000 \
+    actor_rollout_ref.actor.fsdp_config.param_offload=True \
+    actor_rollout_ref.actor.fsdp_config.optimizer_offload=True \
+    actor_rollout_ref.rollout.tensor_model_parallel_size=2 \
+    actor_rollout_ref.rollout.name=sglang \
+    actor_rollout_ref.rollout.gpu_memory_utilization=0.2 \
+    actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=24000 \
+    actor_rollout_ref.rollout.free_cache_engine=True \
+    actor_rollout_ref.ref.fsdp_config.param_offload=True \
+    actor_rollout_ref.ref.log_prob_max_token_len_per_gpu=24000 \
+    critic.optim.lr=1e-5 \
+    critic.model.use_remove_padding=True \
+    critic.model.path=Qwen/Qwen2-7B-Instruct \
+    critic.model.enable_gradient_checkpointing=True \
+    critic.ppo_max_token_len_per_gpu=98304 \
+    critic.model.fsdp_config.param_offload=True \
+    critic.model.fsdp_config.optimizer_offload=True \
+    algorithm.kl_ctrl.kl_coef=0.001 \
+    trainer.critic_warmup=0 \
+    trainer.logger=['console','wandb'] \
+    trainer.project_name='verl_example_gsm8k' \
+    trainer.experiment_name="qwen2-7b_sglang_0.4.3.post2_function_rm_bsz8k_p4k_r4k_seq_packing-${TIME}" \
+    trainer.n_gpus_per_node=8 \
+    +trainer.val_before_train=False \
+    trainer.nnodes=1 \
+    trainer.save_freq=-1 \
+    trainer.test_freq=5 \
+    trainer.total_epochs=15 $@
 </details>
