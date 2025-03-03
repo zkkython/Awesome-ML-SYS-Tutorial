@@ -27,11 +27,13 @@ pip install .
 
 ### 安装 dev 分支的 SGLang
 
+注意`--config-settings`需要更新到最近的`pip`  
 ```bash
+pip install --upgrade pip
 cd ..
 git clone https://github.com/sgl-project/sglang.git
 cd verl-sglang
-pip install -e ../sglang/python "sglang[all]" --config-settings editable_mode=strict --find-links https://flashinfer.ai/whl/cu124/torch2.5/flashinfer-python/" 
+pip install -e ../sglang/python "sglang[all]" --config-settings editable_mode=strict --find-links "https://flashinfer.ai/whl/cu124/torch2.5/flashinfer-python/" 
 ```
 
 这个过程可能出现若干问题，这里列出一些常见问题和解决方法：
