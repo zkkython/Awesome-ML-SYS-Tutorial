@@ -41,6 +41,14 @@ python3 -m uv pip install -e "python[all]" --find-links https://flashinfer.ai/wh
 cd ..
 ```
 
+按照上述流程，很有可能缺少 `flash-attn`，这里建议手动安装：
+
+```bash
+python3 -m uv pip install wheel
+python3 -m uv pip install packaging
+python3 -m uv pip install flash-attn --no-build-isolation --no-deps
+```
+
 这个过程可能出现若干问题，这里列出一些常见问题和解决方法：
 
 1. **vllm dependency 冲突**
@@ -49,17 +57,7 @@ cd ..
 
 实际上，verl-SGLang 发行版不需要 vllm 兼容，可以直接忽视。
 
-2. **flash-attn 不存在**
-
-可能虚拟环境不一定有 `wheel` 和 `packaging`，会导致 `flash_attn` 安装失败。这里需要手动再安装一次：
-
-```bash
-python3 -m uv pip install wheel
-python3 -m uv pip install packaging
-python3 -m uv pip install flash-attn --no-build-isolation --no-deps
-```
-
-3. **安装 flash_attn 时出现 CUDA ERROR**
+2. **安装 flash_attn 时出现 CUDA ERROR**
 
 如果出现 `CUDA ERROR`，尝试修改 `CUDA_HOME` 和 `LD_LIBRARY_PATH` 到本地的 cuda，我这里是 `12.4`。
 
@@ -68,26 +66,29 @@ export LD_LIBRARY_PATH=/usr/local/cuda-12.4/lib64:$LD_LIBRARY_PATH
 export CUDA_HOME=“/usr/local/cuda-12.4”
 ```
 
-4. `from torch._C import *` 报错
+3. `from torch._C import *` 报错
 
 这个太经典了，torch 各种 symbol 不匹配，我一般的解决方案如下：
 
 ```bash
-
 # 查询自己的 python 路径
 which python
 # 输出为 /data/chayenne/.python/verl-sglang/bin/python
+```
 
+```bash
 # 接着找到 nvjitlink 的路径，操作类似
 
 ls /data/chayenne/.python/verl-sglang/lib64/python3.11/site-packages/nvidia/nvjitlink/lib/
+```
 
+```bash
 # 把 nvjitlink 的路径添加到 LD_LIBRARY_PATH 中
 
 export LD_LIBRARY_PATH=/data/chayenne/.python/verl-sglang/lib64/python3.11/site-packages/nvidia/nvjitlink/lib/:$LD_LIBRARY_PATH
 ```
 
-成功安装后，可以检测下相关库的配置：
+成功安装后，可以检测下相关库的配置，仅做参考：
 
 - sglang 0.4.3.post2 
 - torch2.5.1
@@ -156,14 +157,15 @@ python3 examples/data_preprocess/gsm8k.py
 python3 examples/data_preprocess/math_dataset.py
 ```
 
-可以在四卡 GPU 上直接运行 `bash test_sglang.sh` 测试 SGLang 的 PPO 功能。具体运行的命令如下：
+可以在 4 卡 GPU 上直接运行 `bash test_sglang.sh` 测试 SGLang 的 PPO 功能。具体运行的命令如下：
 
 <details>
 <summary>运行 PPO 的命令</summary>
 
 ```bash
-DATA_DIR=~/data/gsm8k
-python3 -m verl.trainer.main_ppo \
+export CUDA_VISIBLE_DEVICES=0,1,2,3
+export DATA_DIR=~/data/gsm8k
+NCCL_DEBUG=INFO python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.name=sglang \
     data.train_files=$DATA_DIR/train.parquet \
     data.val_files=$DATA_DIR/test.parquet \
@@ -203,6 +205,7 @@ python3 -m verl.trainer.main_ppo \
     trainer.total_epochs=2 2>&1 | tee verl_demo.log
 ```
 </details>
+
 
 ### 对拍指令
 
