@@ -191,8 +191,8 @@ Run `forward_extend` on the current batch, this will eventually invoke the Atten
 
 ##### Step 3. Function `process_batch_result_prefill`
   `cache_finished_req` and `cache_unfinished_req` are responsible for managing the KV cache in Radix Cache, ReqToTokenPool, and TokenToKVPool.
-  - If the request is finished, invoke `cache_finished_req` (refer to [PLACEHOLDER] for details of `cache_finished_req` )
-  - else invoke `cache_unfinished_req` (refer to [PLACEHOLDER] for details of `cache_unfinished_req` )
+  - If the request is finished, invoke `cache_finished_req` (refer to [this secion](#radixcache-cache_finished_req--cache_finished_req) for details of `cache_finished_req` )
+  - else invoke `cache_unfinished_req` (refer to [this secion](#radixcache-cache_finished_req--cache_finished_req) for details of `cache_unfinished_req` )
 
   In our example, `cache_unfinished_req` is invoked after extend/prefill phase, `BC` was added as a child node for `A`, both nodes `A` and `BC` increase the lock reference, node `BC` become the `last_node` for the request.
 
@@ -215,7 +215,7 @@ Run `forward_decode` on the current batch, this will eventually invoke the Atten
   - KV = All cached tokens from `req_to_token_pool` by `out_cache_loc` including A, B, C(from previous round), D (Function `create_flashinfer_kv_indices_triton`)
 
 ##### Step 6. Function `process_batch_result_decode`
-  If the request is finished, invoke `cache_finished_req` (refer to [PLACEHOLDER] for details of `cache_finished_req` ). No operation for cache is needed for unfinished request in decode phase.
+  If the request is finished, invoke `cache_finished_req` (refer to [this secion](#radixcache-cache_finished_req--cache_finished_req) for details of `cache_finished_req` ). No operation for cache is needed for unfinished request in decode phase.
   
   In our example, `DE` is appended to node `BC`, and the lock reference for node `A` and `BCDE` got decreased. 
 
