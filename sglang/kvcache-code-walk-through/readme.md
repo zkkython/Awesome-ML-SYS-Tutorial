@@ -1,4 +1,3 @@
-<!-- TODO(xiaotong):  CN -->
 # KV Cache Code Walkthrough
 This document provides an overview of the KV cache management implementation. Our narrative start with the `Scheduler` components which orchestrat the requests in batch. After that, we zoom into a single request, follow its journey through prefill and decode phases, detailing how the KV cache and memory pools are updated step-by-step.
 
@@ -91,7 +90,6 @@ After `run_batch`, the Scheduler calls `process_batch_result` to to determine wh
 #### 6. **Iteration**:
 The loop repeats until all requests are eventually completed. If insufficient memory is encountered, requests may be chunked (in prefill) or retracted (in decode), then reinserted into the waiting queue for later processing.
 
-<!-- TODO(mingyuan):  CN -->
 ## One Request Lifecycle
 This section zoom into one request's lifecycle, we would step-by-step walkthrough the key functions that updates the KV Cache & Memory Pools.
 
@@ -184,7 +182,6 @@ Run `forward_decode` on the current batch, this will eventually invoke the Atten
   
   In our example, `DE` is appended to node `BC`, and the lock reference for node `A` and `BCDE` got decreased. 
 
-<!-- TODO(yangmin):  CN -->
 #### RadixCache `cache_finished_req` & `cache_finished_req`
 This section would go deeper on `cache_finished_req` & `cache_finished_req`'s flow.
 
