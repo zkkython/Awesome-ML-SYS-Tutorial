@@ -206,12 +206,19 @@ NCCL_DEBUG=INFO python3 -m verl.trainer.main_ppo \
 
 准备一台 8 卡机器，注意对拍默认会使用 `wandb` 和环境变量 `WANDB_API_KEY` 记录训练metrics，如不想记录则删除 `trainer.logger=['console','wandb']` 中的 `wandb`。此脚本在 8 x H100 上运行 3h40m，修改自 `examples/ppo_trainer/run_qwen2-7b_seq_balance.sh`。  
 
+使用前需要配置你的`WANDB_API_KEY`，[参考这个流程找到你账号的API KEY](https://community.wandb.ai/t/where-can-i-find-the-api-token-for-my-project/7914)
+```bash
+export WANDB_API_KEY=************************
+```
+
 可以直接运行 `bash run_sgl_qwen2-7b_seq_balance.sh`来 启动对拍。
 
 具体命令如下
 
 <details>
 <summary>SGLang 对拍</summary>
+
+```bash
 set -x
 gsm8k_train_path=$HOME/data/gsm8k/train.parquet
 gsm8k_test_path=$HOME/data/gsm8k/test.parquet
@@ -261,4 +268,5 @@ python3 -m verl.trainer.main_ppo \
     trainer.save_freq=-1 \
     trainer.test_freq=5 \
     trainer.total_epochs=15 $@
+```
 </details>
