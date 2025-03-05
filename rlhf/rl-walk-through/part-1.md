@@ -1,4 +1,4 @@
-# Demystifying Reinforcement Learning
+# Demystifying Reinforcement Learning (Part 1)
 
 这是 UCLA 2025 年初春的 RL 课程笔记，感谢周博磊老师的课件。我把这系列的名字其名为 Demystifying Reinforcement Learning，因为自己一直想要做一些 RLHF framework 的工作，所以对 RL 算法的直观非常重要。出于我个人的学习习惯，我对理论不感兴趣，好在对于 ML SYS researcher 而言，这样的直观已然可以带来巨大的帮助。
 
@@ -130,4 +130,3 @@ $$
 | Actor-Critic   | 策略 + 价值函数             | 不需要             | 是                   | 是                 | 结合两者的优点，稳定高效     | 复杂，调参难度高             |
 | Model-Based    | 环境模型 + 策略/价值         | 需要               | 可选                 | 可选               | 样本效率高，能规划           | 模型学习困难，计算成本高     |
 | Model-Free     | 策略或价值函数               | 不需要             | 可选                 | 可选               | 简单，易实现                 | 样本效率低，依赖大量试错     |
-
