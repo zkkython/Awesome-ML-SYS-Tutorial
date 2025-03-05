@@ -25,20 +25,15 @@ cd verl-sglang
 git checkout dev_sglang
 git pull --no-ff
 python3 -m uv pip install .
-cd ..
 ```
 
-### Install SGLang Main Branch From Source
+### Install SGLang Main Branch From Github Source
 
-这里需要安装最新的 SGLang main branch：
+这里需要从github安装最新的 SGLang main branch：
 
 ```bash
-# Use the last main branch
-git clone https://github.com/sgl-project/sglang.git
-cd sglang
-
-python3 -m uv pip install -e "python[all]" --find-links https://flashinfer.ai/whl/cu124/torch2.5/flashinfer-python
-cd ..
+# Install latest SGlang from main branch
+python3 -m uv pip install "sglang[all] @ git+https://github.com/sgl-project/sglang.git/@main#egg=sglang&subdirectory=python" --find-links https://flashinfer.ai/whl/cu124/torch2.5/flashinfer-python
 ```
 
 按照上述流程，很有可能缺少 `flash-attn`，这里建议手动安装：
@@ -53,7 +48,7 @@ python3 -m uv pip install flash-attn --no-build-isolation --no-deps
 
 1. **vllm dependency 冲突**
 
-`ERROR: pip’s dependency resolver does not currently take into account all the packages that are installed. This behaviour is the source of the following dependency conflicts. verl 0.2 requires vllm<=0.6.3, but you have vllm 0.6.4.post1 which is incompatible.`
+`ERROR: pip’s dependency resolver does not currently take into account all the packages that are installed. This behaviour is the source of the following dependency conflicts. verl 0.2 requires vllm<=0.6.3, but you have vllm 0.7.2 which is incompatible.`
 
 实际上，verl-SGLang 发行版不需要 vllm 兼容，可以直接忽视。
 
@@ -91,10 +86,10 @@ export LD_LIBRARY_PATH=/data/chayenne/.python/verl-sglang/lib64/python3.11/site-
 成功安装后，可以检测下相关库的配置，仅做参考：
 
 - sglang 0.4.3.post2 
-- torch2.5.1
-- flashinfer 0.2.2.post1
+- torch 2.5.1
+- flashinfer 0.2.2.post1+cu124torch2.5
 - verl 0.2.0.dev0
-- ray 2.42.1
+- ray 2.43.0
 - flash-attn 2.7.4.post1  
 
 ### 安装 megatron 作为 veRL 的 training engine
@@ -169,8 +164,8 @@ NCCL_DEBUG=INFO python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.name=sglang \
     data.train_files=$DATA_DIR/train.parquet \
     data.val_files=$DATA_DIR/test.parquet \
-    data.train_batch_size=4 \
-    data.val_batch_size=64 \
+    data.train_batch_size=64 \
+    data.val_batch_size=1312 \
     data.max_prompt_length=512 \
     data.max_response_length=1 \
     actor_rollout_ref.model.path=Qwen/Qwen2-7B-Instruct \
@@ -181,8 +176,8 @@ NCCL_DEBUG=INFO python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
     actor_rollout_ref.actor.fsdp_config.param_offload=True \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=True \
-    actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=4 \
-    actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
+    actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=16 \
+    actor_rollout_ref.rollout.tensor_model_parallel_size=4 \
     actor_rollout_ref.rollout.gpu_memory_utilization=0.4 \
     actor_rollout_ref.ref.log_prob_micro_batch_size=1 \
     actor_rollout_ref.ref.fsdp_config.param_offload=True \
