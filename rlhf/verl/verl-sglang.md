@@ -25,20 +25,15 @@ cd verl-sglang
 git checkout dev_sglang
 git pull --no-ff
 python3 -m uv pip install .
-cd ..
 ```
 
-### Install SGLang Main Branch From Source
+### Install SGLang Main Branch From Github Source
 
-这里需要安装最新的 SGLang main branch：
+这里需要从github安装最新的 SGLang main branch：
 
 ```bash
-# Use the last main branch
-git clone https://github.com/sgl-project/sglang.git
-cd sglang
-
-python3 -m uv pip install -e "python[all]" --find-links https://flashinfer.ai/whl/cu124/torch2.5/flashinfer-python
-cd ..
+# Install latest SGlang from main branch
+python3 -m uv pip install "sglang[all] @ git+https://github.com/sgl-project/sglang.git/@main#egg=sglang&subdirectory=python" --find-links https://flashinfer.ai/whl/cu124/torch2.5/flashinfer-python
 ```
 
 按照上述流程，很有可能缺少 `flash-attn`，这里建议手动安装：
@@ -53,7 +48,7 @@ python3 -m uv pip install flash-attn --no-build-isolation --no-deps
 
 1. **vllm dependency 冲突**
 
-`ERROR: pip’s dependency resolver does not currently take into account all the packages that are installed. This behaviour is the source of the following dependency conflicts. verl 0.2 requires vllm<=0.6.3, but you have vllm 0.6.4.post1 which is incompatible.`
+`ERROR: pip’s dependency resolver does not currently take into account all the packages that are installed. This behaviour is the source of the following dependency conflicts. verl 0.2 requires vllm<=0.6.3, but you have vllm 0.7.2 which is incompatible.`
 
 实际上，verl-SGLang 发行版不需要 vllm 兼容，可以直接忽视。
 
@@ -91,10 +86,10 @@ export LD_LIBRARY_PATH=/data/chayenne/.python/verl-sglang/lib64/python3.11/site-
 成功安装后，可以检测下相关库的配置，仅做参考：
 
 - sglang 0.4.3.post2 
-- torch2.5.1
-- flashinfer 0.2.2.post1
+- torch 2.5.1
+- flashinfer 0.2.2.post1+cu124torch2.5
 - verl 0.2.0.dev0
-- ray 2.42.1
+- ray 2.43.0
 - flash-attn 2.7.4.post1  
 
 ### 安装 megatron 作为 veRL 的 training engine
@@ -169,8 +164,8 @@ NCCL_DEBUG=INFO python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.name=sglang \
     data.train_files=$DATA_DIR/train.parquet \
     data.val_files=$DATA_DIR/test.parquet \
-    data.train_batch_size=4 \
-    data.val_batch_size=64 \
+    data.train_batch_size=64 \
+    data.val_batch_size=1312 \
     data.max_prompt_length=512 \
     data.max_response_length=1 \
     actor_rollout_ref.model.path=Qwen/Qwen2-7B-Instruct \
@@ -181,8 +176,8 @@ NCCL_DEBUG=INFO python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
     actor_rollout_ref.actor.fsdp_config.param_offload=True \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=True \
-    actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=4 \
-    actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
+    actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=16 \
+    actor_rollout_ref.rollout.tensor_model_parallel_size=4 \
     actor_rollout_ref.rollout.gpu_memory_utilization=0.4 \
     actor_rollout_ref.ref.log_prob_micro_batch_size=1 \
     actor_rollout_ref.ref.fsdp_config.param_offload=True \
@@ -211,12 +206,19 @@ NCCL_DEBUG=INFO python3 -m verl.trainer.main_ppo \
 
 准备一台 8 卡机器，注意对拍默认会使用 `wandb` 和环境变量 `WANDB_API_KEY` 记录训练metrics，如不想记录则删除 `trainer.logger=['console','wandb']` 中的 `wandb`。此脚本在 8 x H100 上运行 3h40m，修改自 `examples/ppo_trainer/run_qwen2-7b_seq_balance.sh`。  
 
+使用前需要配置你的`WANDB_API_KEY`，[参考这个流程找到你账号的API KEY](https://community.wandb.ai/t/where-can-i-find-the-api-token-for-my-project/7914)
+```bash
+export WANDB_API_KEY=************************
+```
+
 可以直接运行 `bash run_sgl_qwen2-7b_seq_balance.sh`来 启动对拍。
 
 具体命令如下
 
 <details>
 <summary>SGLang 对拍</summary>
+
+```bash
 set -x
 gsm8k_train_path=$HOME/data/gsm8k/train.parquet
 gsm8k_test_path=$HOME/data/gsm8k/test.parquet
@@ -266,4 +268,29 @@ python3 -m verl.trainer.main_ppo \
     trainer.save_freq=-1 \
     trainer.test_freq=5 \
     trainer.total_epochs=15 $@
+```
+</details>
+
+## 和vLLM采样对齐  
+目前使用SGLang时会出现第一个iter开始score就非常低的现象，下图是在gsm8k上进行对拍的结果，其中两条高的线是vllm，剩下的是SGLang
+![image](https://github.com/user-attachments/assets/e7d8c370-a9b6-40c7-85ba-c06ff1228592)、
+
+初步排查原因是validation采样时对参数update失败，同时repetation penalty默认值和vllm不同。更新后得到上图的黄色曲线，可以看到稍好了一点，但没解决问题。  
+
+从表现上看，目前的采样方案SGLang会输出更长的response，下图是和vllm的response mean相比，可以看到平均输出长了一倍
+![image](https://github.com/user-attachments/assets/467ef4a8-363f-41c4-9acf-d27e740a8576)
+
+
+<details>
+<summary>捕获的vllm和sglang分别调用generate接口时使用的采样参数，validation时==!do_sample，使用greedy即temperature=0</summary>
+Vllm:  
+  
+do_sample: SamplingParams(n=1, presence_penalty=0.0, frequency_penalty=0.0, repetition_penalty=1.0, temperature=1.0, top_p=1, top_k=-1, min_p=0.0, seed=None, stop=[], stop_token_ids=[], bad_words=[], include_stop_str_in_output=False, ignore_eos=False, max_tokens=4096, min_tokens=0, logprobs=1, prompt_logprobs=None, skip_special_tokens=True, spaces_between_special_tokens=True, truncate_prompt_tokens=None, guided_decoding=None)  
+
+!do_sample: SamplingParams(n=1, presence_penalty=0.0, frequency_penalty=0.0, repetition_penalty=1.0, temperature=0, top_p=1.0, top_k=-1, min_p=0.0, seed=None, stop=[], stop_token_ids=[], bad_words=[], include_stop_str_in_output=False, ignore_eos=False, max_tokens=4096, min_tokens=0, logprobs=1, prompt_logprobs=None, skip_special_tokens=True, spaces_between_special_tokens=True, truncate_prompt_tokens=None, guided_decoding=None)
+
+SGLang:  
+do_sample: {'n': 1, 'max_new_tokens': 4096, 'temperature': 1.0, 'top_k': -1, 'top_p': 1, 'ignore_eos': False, 'repetition_penalty': 1.0}  
+
+!do_sample: {'n': 1, 'max_new_tokens': 4096, 'temperature': 0, 'top_k': -1, 'top_p': 1.0, 'ignore_eos': False, 'repetition_penalty': 1.0}  
 </details>
