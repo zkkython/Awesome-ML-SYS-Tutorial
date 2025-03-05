@@ -9,6 +9,8 @@ To facilitate this explanation, we will make a few assumptions in our examples:
 - We don't enable `enable_mixed_chunck`.
 - We use `Radix Cache` as `tree_cache`.
 
+<!-- todo: 看完之后只大概理解了functional design，并没有感知到什么design tradeoff (orz)，如果理解整个design的tradeoff对理解code有益的话，可以在最开头补充performance metrics和sys big picture，这样可以减少”为什么要这么schedule和设计cache“的疑惑 -->
+
 ## Scheduler Overview
 
 This section provides a high-level overview of the `Scheduler` which is responsible for managing active requests.
@@ -24,6 +26,7 @@ A data structure designed to hold active requests. The queue would be reordered 
     > **retract** 
     > 
     > If available memory is insufficient during decode, the scheduler may retract certain requests (via `retract_decode`) from the `running_batch`, returning them to the waiting queue for later processing.
+<!--TODO: 可以callback一下priority和longest prefix之间的关系 -->
 
 #### `new_batch`
 A batch of requests that are ready for prefill/extend stage.
@@ -40,6 +43,8 @@ The batch of requests that are currently being processed in the main loop of Sch
 If there's requests ready for prefill (`new_batch`) in this cycle, use `new_batch` as `cur_batch`. Otherwise, `cur_batch` would process those that are ready for decode, thus use `running_batch` as `cur_batch`. 
 
 ### Sequences
+
+<!-- todo: 这里的sequence是？ 看了图也没发现是哪个sequence？是箭头方向的execution flow吗？-->
 
 Let's walk through the sequence in the diagram now.
 
@@ -100,6 +105,9 @@ This section zoom into one request's lifecycle, we would step-by-step walkthroug
 Let's firstly understand some of the important building blocks for managing KV. 
 
 There are two-level memory pools to manage KV cache. 
+
+<!-- todo 我觉得两层mapping是可以画个图的，比文字好看 -->
+
 #### `req_to_token_pool`
 A map from a request to its tokens' KV cache indices.
 - **Shape:** Max Allowed Requests Number (being set by argument `max-running-requests` for the maximum number of requests to run concurrently) * Max Context Length for each request (being set by config `model_config.context_len`)
@@ -120,6 +128,7 @@ A map from a request to its tokens' KV cache indices.
 
     Note we normally retrieve the KV Cache for entire layer all together, because we would need all prior tokens' KV in a request to do forward.
 
+<!-- todo: 如果能讲讲tree cache是什么就更好了，如果它的设计跟perf metric (cache reuse)有关的话 -->
 #### `tree_cache`
 `tree_cache` is a tree structure to enhance the reuse of prefix KV Cache across requests. `tree_cache` is responsible for updating `req_to_token_pool` and `token_to_kv_pool` on a token level for each request. Across `tree_cache`, `req_to_token_pool`, and `token_to_kv_pool`, tokens are linked via it's KV Cache indices.
 - **Access:**
