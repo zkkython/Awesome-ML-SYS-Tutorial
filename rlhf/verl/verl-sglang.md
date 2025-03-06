@@ -201,7 +201,7 @@ mkdir log
 bash ~/verl-sglang/examples/ppo_trainer/rollout_callibration.sh vllm $(now)
 ```
 
-## 和vLLM采样对齐  
+<!-- ## 和vLLM采样对齐  
 目前使用SGLang时会出现第一个iter开始score就非常低的现象，下图是在gsm8k上进行对拍的结果，其中两条高的线是vllm，剩下的是SGLang
 ![image](https://github.com/user-attachments/assets/e7d8c370-a9b6-40c7-85ba-c06ff1228592)、
 
@@ -223,4 +223,4 @@ SGLang:
 do_sample: {'n': 1, 'max_new_tokens': 4096, 'temperature': 1.0, 'top_k': -1, 'top_p': 1, 'ignore_eos': False, 'repetition_penalty': 1.0}  
 
 !do_sample: {'n': 1, 'max_new_tokens': 4096, 'temperature': 0, 'top_k': -1, 'top_p': 1.0, 'ignore_eos': False, 'repetition_penalty': 1.0}  
-</details>
+</details> -->
