@@ -54,14 +54,13 @@ python3 -m uv pip install flash-attn --no-build-isolation --no-deps
 
 2. **安装 flash_attn 时出现 CUDA ERROR**
 
-如果出现 `CUDA ERROR`，尝试修改 `CUDA_HOME` 和 `LD_LIBRARY_PATH` 到本地的 cuda，我这里是 `12.4`。
+如果出现 `CUDA ERROR`，尝试修改 `CUDA_HOME` 和 `LD_LIBRARY_PATH` 到本地的 cuda，我这里是 `12.1`。
 
-```
-export LD_LIBRARY_PATH=/usr/local/cuda-12.4/lib64:$LD_LIBRARY_PATH
-export CUDA_HOME=“/usr/local/cuda-12.4”
+```bash
+export CUDA_HOME=/usr/local/cuda-12.1
 ```
 
-3. `from torch._C import *` 报错
+3. `from torch._C import *` 报错，`undefined symbol:  __nvJitLinkComplete_12_4, version libnvJitLink.so.12`
 
 这个太经典了，torch 各种 symbol 不匹配，我一般的解决方案如下：
 
@@ -74,20 +73,20 @@ which python
 ```bash
 # 接着找到 nvjitlink 的路径，操作类似
 
-ls /data/chayenne/.python/verl-sglang/lib64/python3.11/site-packages/nvidia/nvjitlink/lib/
+ls /data/chayenne/.python/verl-sglang/lib64/python3.10/site-packages/nvidia/nvjitlink/lib/
 ```
 
 ```bash
 # 把 nvjitlink 的路径添加到 LD_LIBRARY_PATH 中
 
-export LD_LIBRARY_PATH=/data/chayenne/.python/verl-sglang/lib64/python3.11/site-packages/nvidia/nvjitlink/lib/:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=/data/chayenne/.python/verl-sglang/lib64/python3.10/site-packages/nvidia/nvjitlink/lib/:$LD_LIBRARY_PATH
 ```
 
 成功安装后，可以检测下相关库的配置，仅做参考：
 
 - sglang 0.4.3.post2 
 - torch 2.5.1
-- flashinfer 0.2.2.post1+cu124torch2.5
+- flashinfer_python 0.2.2.post1+cu124torch2.5
 - verl 0.2.0.dev0
 - ray 2.43.0
 - flash-attn 2.7.4.post1  
@@ -147,129 +146,28 @@ sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-13 60
 首先构造数据集，默认保存至 `~/data`。
 
 ```bash
-cd verl-sglang
 python3 examples/data_preprocess/gsm8k.py
 python3 examples/data_preprocess/math_dataset.py
 ```
 
-可以在 4 卡 GPU 上直接运行 `bash test_sglang.sh` 测试 SGLang 的 PPO 功能。具体运行的命令如下：
-
-<details>
-<summary>运行 PPO 的命令</summary>
-
-```bash
-export CUDA_VISIBLE_DEVICES=0,1,2,3
-export DATA_DIR=~/data/gsm8k
-NCCL_DEBUG=INFO python3 -m verl.trainer.main_ppo \
-    actor_rollout_ref.rollout.name=sglang \
-    data.train_files=$DATA_DIR/train.parquet \
-    data.val_files=$DATA_DIR/test.parquet \
-    data.train_batch_size=64 \
-    data.val_batch_size=1312 \
-    data.max_prompt_length=512 \
-    data.max_response_length=1 \
-    actor_rollout_ref.model.path=Qwen/Qwen2-7B-Instruct \
-    actor_rollout_ref.actor.optim.lr=1e-6 \
-    actor_rollout_ref.model.use_remove_padding=True \
-    actor_rollout_ref.actor.ppo_mini_batch_size=4 \
-    actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=4 \
-    actor_rollout_ref.model.enable_gradient_checkpointing=True \
-    actor_rollout_ref.actor.fsdp_config.param_offload=True \
-    actor_rollout_ref.actor.fsdp_config.optimizer_offload=True \
-    actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=16 \
-    actor_rollout_ref.rollout.tensor_model_parallel_size=4 \
-    actor_rollout_ref.rollout.gpu_memory_utilization=0.4 \
-    actor_rollout_ref.ref.log_prob_micro_batch_size=1 \
-    actor_rollout_ref.ref.fsdp_config.param_offload=True \
-    critic.optim.lr=1e-5 \
-    critic.model.use_remove_padding=True \
-    critic.model.path=Qwen/Qwen2-7B-Instruct \
-    critic.model.enable_gradient_checkpointing=True \
-    critic.ppo_micro_batch_size=4 \
-    critic.model.fsdp_config.param_offload=True \
-    critic.model.fsdp_config.optimizer_offload=True \
-    algorithm.kl_ctrl.kl_coef=0.001 \
-    trainer.critic_warmup=0 \
-    trainer.logger=['console'] \
-    +trainer.val_before_train=False \
-    trainer.default_hdfs_dir=null \
-    trainer.n_gpus_per_node=4 \
-    trainer.nnodes=1 \
-    trainer.save_freq=-1 \
-    trainer.test_freq=10 \
-    trainer.total_epochs=2 2>&1 | tee verl_demo.log
-```
-</details>
-
+可以在 4 卡 GPU 上直接运行 `bash test_sglang.sh` 测试 SGLang 的 PPO 功能。
 
 ### 对拍指令
 
-准备一台 8 卡机器，注意对拍默认会使用 `wandb` 和环境变量 `WANDB_API_KEY` 记录训练metrics，如不想记录则删除 `trainer.logger=['console','wandb']` 中的 `wandb`。此脚本在 8 x H100 上运行 3h40m，修改自 `examples/ppo_trainer/run_qwen2-7b_seq_balance.sh`。  
+准备一台 8 卡机器，注意对拍默认会使用 `wandb` 和环境变量 `WANDB_API_KEY` 记录训练 metrics。8 x H100 上耗时约 4h。
 
-使用前需要配置你的`WANDB_API_KEY`，[参考这个流程找到你账号的API KEY](https://community.wandb.ai/t/where-can-i-find-the-api-token-for-my-project/7914)
-```bash
-export WANDB_API_KEY=************************
-```
-
-可以直接运行 `bash run_sgl_qwen2-7b_seq_balance.sh`来 启动对拍。
-
-具体命令如下
-
-<details>
-<summary>SGLang 对拍</summary>
+使用前需要配置好 `WANDB_API_KEY`，可以参考[这个过程](https://community.wandb.ai/t/where-can-i-find-the-api-token-for-my-project/7914)。
 
 ```bash
-set -x
-gsm8k_train_path=$HOME/data/gsm8k/train.parquet
-gsm8k_test_path=$HOME/data/gsm8k/test.parquet
-math_train_path=$HOME/data/math/train.parquet
-math_test_path=$HOME/data/math/test.parquet
-train_files="['$gsm8k_train_path', '$math_train_path']"
-test_files="['$gsm8k_test_path', '$math_test_path']"
-TIME=$(date +"%Y-%m-%d-%H-%M")
+export WANDB_API_KEY={YOUR_WANDB_API_KEY}
 
-python3 -m verl.trainer.main_ppo \
-    data.train_files="$train_files" \
-    data.val_files="$test_files" \
-    data.train_batch_size=2048 \
-    data.max_prompt_length=4096 \
-    data.max_response_length=4096 \
-    actor_rollout_ref.model.path=Qwen/Qwen2-7B-Instruct \
-    actor_rollout_ref.actor.optim.lr=1e-6 \
-    actor_rollout_ref.model.use_remove_padding=True \
-    actor_rollout_ref.model.enable_gradient_checkpointing=True \
-    actor_rollout_ref.actor.ppo_mini_batch_size=512 \
-    actor_rollout_ref.actor.use_dynamic_bsz=True \
-    actor_rollout_ref.actor.ppo_max_token_len_per_gpu=24000 \
-    actor_rollout_ref.actor.fsdp_config.param_offload=True \
-    actor_rollout_ref.actor.fsdp_config.optimizer_offload=True \
-    actor_rollout_ref.rollout.tensor_model_parallel_size=2 \
-    actor_rollout_ref.rollout.name=sglang \
-    actor_rollout_ref.rollout.gpu_memory_utilization=0.2 \
-    actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=24000 \
-    actor_rollout_ref.rollout.free_cache_engine=True \
-    actor_rollout_ref.ref.fsdp_config.param_offload=True \
-    actor_rollout_ref.ref.log_prob_max_token_len_per_gpu=24000 \
-    critic.optim.lr=1e-5 \
-    critic.model.use_remove_padding=True \
-    critic.model.path=Qwen/Qwen2-7B-Instruct \
-    critic.model.enable_gradient_checkpointing=True \
-    critic.ppo_max_token_len_per_gpu=98304 \
-    critic.model.fsdp_config.param_offload=True \
-    critic.model.fsdp_config.optimizer_offload=True \
-    algorithm.kl_ctrl.kl_coef=0.001 \
-    trainer.critic_warmup=0 \
-    trainer.logger=['console','wandb'] \
-    trainer.project_name='verl_example_gsm8k' \
-    trainer.experiment_name="qwen2-7b_sglang_0.4.3.post2_function_rm_bsz8k_p4k_r4k_seq_packing-${TIME}" \
-    trainer.n_gpus_per_node=8 \
-    +trainer.val_before_train=False \
-    trainer.nnodes=1 \
-    trainer.save_freq=-1 \
-    trainer.test_freq=5 \
-    trainer.total_epochs=15 $@
+# 定义这个时间戳函数
+function now() {
+    date '+%Y-%m-%d-%H-%M'
+}
 ```
-</details>
+
+可以直接运行 `bash examples/ppo_trainer/rollout_callibration.sh {sglang/vllm} $(now)` 测试 PPO 功能。
 
 ## 和vLLM采样对齐  
 目前使用SGLang时会出现第一个iter开始score就非常低的现象，下图是在gsm8k上进行对拍的结果，其中两条高的线是vllm，剩下的是SGLang
