@@ -54,7 +54,8 @@ $$
 
 当然，这个多臂老虎机模型是最为简化的 RL 任务，因为奖励是不延迟的，state 不会变化，而且 action 之间不会有后续影响。
 
-### 马尔科夫决策过程（Markov Decision Process, MDP）
+### 马尔科夫奖励过程（Markov Reward Process, MRP）与马尔科夫决策过程（Markov Decision Process, MDP）
 
-马尔科夫过程意味着”此时此刻，过去不会影响未来“，这一抽象能够建模相当多的实际问题。在 MDP，环境是完全可观察的，而部分可观察（Partially Observable）的问题也能够被转换为 MDP。
+马尔科夫过程意味着”此时此刻，过去不会影响未来“，这一抽象能够建模相当多的实际问题。虽然 MDP 是更广为人知的概念，但是可以从 MRP 开始，作为 MDP 的基础。
 
+在 MRP 中，
