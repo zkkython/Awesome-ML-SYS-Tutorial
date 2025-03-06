@@ -95,7 +95,7 @@ After `run_batch`, the Scheduler calls `process_batch_result` to to determine wh
 #### 6. **Iteration**:
 The loop repeats until all requests are eventually completed. If insufficient memory is encountered, requests may be chunked (in prefill) or retracted (in decode), then reinserted into the waiting queue for later processing.
 
-## One Request Lifecycle
+## A Request's Lifecycle
 This section zoom into one request's lifecycle, we would step-by-step walkthrough the key functions that updates the KV Cache & Memory Pools.
 
 ![alt text](kv-cache-request-lifecycle.png)
@@ -119,12 +119,12 @@ A map from a request to its tokens' KV cache indices.
 - **Layout:** Number of Layers * Max Allowed Tokens Number * Number of Head * Head Dimension
 - **Access:** 
     - Dim0: `layer_id` identify the specific layer
-    - Dim1: `out_cache_loc` identify the specific KV cache indices
+    - Dim1: `out_cache_loc` identify the specific KV cache indices (free slots)
     - Dim2: Head
     - Dim3: Head Dimension
     - Value: `cache_k` for k_buffer and `cache_v` for v_buffer, the real KV Cache Data
 
-    Note we normally retrieve the KV Cache for entire layer all together, because we would need all prior tokens' KV in a request to do forward.
+    Note that we normally retrieve the KV Cache for entire layer all together, because we would need all prior tokens' KV in a request to do forward.
 
 <!-- todo: 如果能讲讲tree cache是什么就更好了，如果它的设计跟perf metric (cache reuse)有关的话 -->
 #### `tree_cache`
@@ -229,5 +229,5 @@ To prevent unintended deletion of active cache nodes. Keeping a lock on a node s
 
 ###### **Similar to `cache_unfinished_req()`, `cache_finished_req()` also has the following steps:**
 1. When a request `req` is completed, its `token_ids` are stored in the **Radix Cache**. Update Radix Cache 
-2. **Release** redundant **KV Cache space** in `token_to_kv_pool` (removing duplicates).
+2. **Release** redundant **KV Cache space** in `token_to_kv_pool` (removing duplicates) by marking the KV indices as free slots.
 3. **Release `req_to_token_pool`** and **update `tree_cache`**.  
