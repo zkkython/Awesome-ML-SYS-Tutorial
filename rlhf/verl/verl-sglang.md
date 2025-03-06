@@ -20,6 +20,7 @@ python3 -m pip install --upgrade uv
 ### 安装 dev 分支的 veRL
 
 ```bash
+cd ~
 git clone https://github.com/ocss884/verl verl-sglang
 cd verl-sglang
 git checkout dev_sglang
@@ -152,7 +153,9 @@ python3 examples/data_preprocess/math_dataset.py
 
 可以在 4 卡 GPU 上直接运行 `bash test_sglang.sh` 测试 SGLang 的 PPO 功能。
 
-### 对拍指令
+## 对拍 SGLang 和 vLLM
+
+### SGLang
 
 准备一台 8 卡机器，注意对拍默认会使用 `wandb` 和环境变量 `WANDB_API_KEY` 记录训练 metrics。8 x H100 上耗时约 4h。
 
@@ -167,7 +170,36 @@ function now() {
 }
 ```
 
-可以直接运行 `bash examples/ppo_trainer/rollout_callibration.sh {sglang/vllm} $(now)` 测试 PPO 功能。
+可以直接运行来进行对拍：
+
+```bash
+mkdir log
+bash examples/ppo_trainer/rollout_callibration.sh sglang $(now)
+```
+
+### vLLM
+
+注意，vllm 和 sglang 是有依赖冲突的，直接从 verl main branch 安装 vllm 依赖的 verl，然后进行对拍。
+
+```bash
+cd ~
+python3 -m venv ~/.python/verl-vllm
+source ~/.python/verl-vllm/bin/activate
+python3 -m pip install --upgrade pip
+python3 -m pip install --upgrade uv
+git clone https://github.com/volcengine/verl.git
+cd verl
+python3 -m uv pip install .
+python3 -m uv pip install vllm==0.7.3
+python3 -m uv pip install flash-attn --no-build-isolation
+```
+
+安装 verl-vllm 后，继续运行如下指令来测试 PPO 功能：
+
+```bash
+mkdir log
+bash ~/verl-sglang/examples/ppo_trainer/rollout_callibration.sh vllm $(now)
+```
 
 ## 和vLLM采样对齐  
 目前使用SGLang时会出现第一个iter开始score就非常低的现象，下图是在gsm8k上进行对拍的结果，其中两条高的线是vllm，剩下的是SGLang
