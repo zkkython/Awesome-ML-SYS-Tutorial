@@ -188,6 +188,7 @@ bash examples/ppo_trainer/rollout_callibration.sh sglang $(now)
 
 ```bash
 cd ~
+uv cache clean
 python3 -m venv ~/.python/verl-vllm
 source ~/.python/verl-vllm/bin/activate
 python3 -m pip install --upgrade pip
@@ -198,6 +199,7 @@ python3 -m uv pip install .
 python3 -m uv pip install vllm==0.7.3
 python3 -m uv pip install pandas
 python3 -m uv pip install flash-attn --no-build-isolation
+cd ~~/verl-sglang
 ```
 
 安装 verl-vllm 后，继续运行如下指令来测试 PPO 功能：
