@@ -196,6 +196,7 @@ git clone https://github.com/volcengine/verl.git
 cd verl
 python3 -m uv pip install .
 python3 -m uv pip install vllm==0.7.3
+python3 -m uv pip install pandas
 python3 -m uv pip install flash-attn --no-build-isolation
 ```
 
