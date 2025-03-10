@@ -4,7 +4,7 @@
 
 对于 veRL 而言，inference engine 需要支持 SPMD，具体的 motivation 可以参考此[链接](https://github.com/vllm-project/vllm/issues/11400)。SGLang 团队已经 merge 了相关 PR，可以参考[此处](https://github.com/sgl-project/sglang/commit/e3e0bc50a9d9644a183bc6dbb55919232196971d)。
 
-这是  veRL 团队和 SGLang 团队开发的 dev release，旨在将 SGLang 接入 veRL 的训练流程中。目前虽然落后主分支有一定距离，但是会在近期完成合并，欢迎大家尝鲜、体验并且提供反馈。
+这是  veRL 团队和 SGLang 团队开发的 dev release，旨在将 SGLang 接入 veRL 的训练流程中。会在近期完成合并，欢迎大家尝鲜、体验并且提供反馈。
 
 ## 环境配置
 
@@ -92,7 +92,7 @@ export LD_LIBRARY_PATH=/data/chayenne/.python/verl-sglang/lib64/python3.10/site-
 - ray 2.43.0
 - flash-attn 2.7.4.post1  
 
-### 安装 megatron 作为 veRL 的 training engine
+<!-- ### 安装 megatron 作为 veRL 的 training engine
 
 veRL 目前也支持使用 Megatron 作为 training engine，使用下面的命令安装 dev 版本的 megatron：
 
@@ -140,9 +140,9 @@ sudo apt update
 sudo apt install gcc-13 g++-13
 sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-13 60
 sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-13 60
-```
+``` -->
 
-## 测试 PPO 功能
+## 4 卡测试 PPO 功能
 
 首先构造数据集，默认保存至 `~/data`。
 
@@ -151,9 +151,14 @@ python3 examples/data_preprocess/gsm8k.py
 python3 examples/data_preprocess/math_dataset.py
 ```
 
-可以在 4 卡 GPU 上直接运行 `bash test_sglang.sh` 测试 SGLang 的 PPO 功能。
+可以在 4 卡 GPU 上直接运行测试 SGLang 的 PPO 功能：
 
-## 对拍 SGLang 和 vLLM
+```bash
+export CUDA_VISIBLE_DEVICES=0,1,2,3
+bash examples/ppo_trainer/test_sglang.sh
+```
+
+## 8 卡对拍 SGLang 和 vLLM
 
 ### SGLang
 
@@ -179,7 +184,7 @@ bash examples/ppo_trainer/rollout_callibration.sh sglang $(now)
 
 ### vLLM
 
-注意，vllm 和 sglang 是有依赖冲突的，直接从 verl main branch 安装 vllm 依赖的 verl，然后进行对拍。这里实际上参考了 verl 的[官方文档](https://github.com/volcengine/verl/blob/main/docs/README_vllm0.7.md)。
+注意，vllm 和 sglang 是有依赖冲突的，直接从 verl main branch 安装 vllm 依赖的 verl，然后进行对拍。这里用的是 vllm 0.6.3。
 
 ```bash
 cd ~
@@ -190,7 +195,6 @@ python3 -m pip install --upgrade uv
 git clone https://github.com/volcengine/verl.git
 cd verl
 python3 -m uv pip install .
-python3 -m uv pip install vllm==0.7.3
 python3 -m uv pip install flash-attn --no-build-isolation
 ```
 
