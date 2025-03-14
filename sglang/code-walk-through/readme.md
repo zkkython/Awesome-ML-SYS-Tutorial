@@ -1,6 +1,6 @@
 # SGLang Code Walk Through
 
-## [English version](./readme.md) | [简体中文](./readme-CN.md)
+## [English version](./README-eng.md) | [简体中文](./readme-CN.md)
 
 <!-- [TODO: 概念和代码的名字？概念是概念，代码是代码，对我们的 workflow 图明确点，然后把 KV cache management 加进来] -->
 
@@ -54,7 +54,8 @@ All the discussions are based on release [v0.4.0](https://github.com/sgl-project
 6. Overlapping scheduling.
 
 ## Launch Server
-SGLang provides two main execution environments: an SRT (SGLang Runtime) Server for [handling online HTTP requests](https://docs.sglang.ai/backend/send_request.html) and an Engine for [offline model execution](https://docs.sglang.ai/backend/offline_engine_api.html) without HTTP overhead. The core server functionality is implemented in [`launch_server`](https://github.com/sgl-project/sglang/blob/v0.4.3/python/sglang/srt/entrypoints/http_server.py#L472) within [http_server.py](https://github.com/sgl-project/sglang/blob/v0.4.3/python/sglang/srt/entrypoints/http_server.py). This function initializes the server's critical components through [`_launch_subprocesses`](https://github.com/sgl-project/sglang/blob/v0.4.3/python/sglang/srt/entrypoints/http_server.py#L491C41-L491C61), which creates and manages three core components: the [Scheduler](https://github.com/sgl-project/sglang/blob/v0.4.3/python/sglang/srt/entrypoints/engine.py#L376) for request batching and execution, the [TokenizerManager](https://github.com/sgl-project/sglang/blob/v0.4.3/python/sglang/srt/entrypoints/engine.py#L426C25-L426C41) for input processing, and the [DetokenizerManager](https://github.com/sgl-project/sglang/blob/v0.4.3/python/sglang/srt/entrypoints/engine.py#L417) for output generation.
+
+SGLang features an SRT (SGLang Runtime) Server for [serving online HTTP requests](https://sgl-project.github.io/start/send_request.html) and an Engine for [offline model execution](https://sgl-project.github.io/backend/offline_engine_api.html) without HTTP protocol. Key functions, [`launch_server`](https://github.com/sgl-project/sglang/blob/f8b0326934bacb7a7d4eba68fb6eddebaa6ff751/python/sglang/srt/server.py#L507) and [`launch_engine`](https://github.com/sgl-project/sglang/blob/f8b0326934bacb7a7d4eba68fb6eddebaa6ff751/python/sglang/srt/server.py#L418), are in [server.py](https://github.com/sgl-project/sglang/blob/f8b0326934bacb7a7d4eba68fb6eddebaa6ff751/python/sglang/srt/server.py). The `launch_engine` function initializes core SRT Server components.
 
 1. Set up configs (logger, server args, CUDA/NCCL env, inter-process ports) and download the model and tokenizer.
 2. If `dp_size > 1`, run `run_data_parallel_controller_process` to start multiple data parallel replicas; otherwise, initialize a Scheduler for each `tp_rank` as a subprocess to handle requests from TokenizerManager and manage KV Cache.
@@ -90,6 +91,9 @@ The Server employs a FastAPI app to define API endpoints, forwarding [`/v1/chat/
 6. Process batch requests with `_handle_batch_request`, tokenize inputs, manage parallel sampling, interact with the scheduler, and yield responses in both streaming and non-streaming modes.
 
 ## Scheduler Receive Requests and Process Batches
+
+Here is the overview of the Scheduler:
+![sglang_scheduler](./sglang_scheduler.svg)
 
 [Scheduler](https://github.com/sgl-project/sglang/blob/f8b0326934bacb7a7d4eba68fb6eddebaa6ff751/python/sglang/srt/managers/scheduler.py#L97) runs as Server's subprocess, initialized via `run_scheduler_process` and executes its infinite event loop with `event_loop_normal` or `event_loop_overlap`.
 

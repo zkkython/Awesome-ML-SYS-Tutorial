@@ -1,6 +1,6 @@
 # SGLang 后端代码解析
 
-## [English](readme.md) | [中文](readme-CN.md)
+【[English](readme.md) | [中文](readme-CN.md)】
 
 本文档为开发者提供 SGLang 后端代码的代码梳理，按照一个请求从输入到最后输出的顺序进行讲解。下图简要介绍了这一流程：
 
@@ -53,8 +53,7 @@
 
 ## 启动 Server（launch Sever）
 
-SGLang 提供两种主要执行环境：SRT（SGLang Runtime）Server 用于[处理在线HTTP请求](https://docs.sglang.ai/backend/send_request.html)，以及一个无需HTTP协议开销的[离线推理引擎](https://docs.sglang.ai/backend/offline_engine_api.html)。服务器的核心功能在 [http_server.py](https://github.com/sgl-project/sglang/blob/v0.4.3/python/sglang/srt/entrypoints/http_server.py) 中的 [`launch_server`](https://github.com/sgl-project/sglang/blob/v0.4.3/python/sglang/srt/entrypoints/http_server.py#L472) 函数中实现。该函数通过 [`_launch_subprocesses`](https://github.com/sgl-project/sglang/blob/v0.4.3/python/sglang/srt/entrypoints/http_server.py#L491C41-L491C61) 初始化服务器的关键组件，创建并管理三个核心模块：负责请求批处理和执行的 [Scheduler](https://github.com/sgl-project/sglang/blob/v0.4.3/python/sglang/srt/entrypoints/engine.py#L376)、负责输入处理的 [TokenizerManager](https://github.com/sgl-project/sglang/blob/v0.4.3/python/sglang/srt/entrypoints/engine.py#L426C25-L426C41) 以及负责输出生成的 [DetokenizerManager](https://github.com/sgl-project/sglang/blob/v0.4.3/python/sglang/srt/entrypoints/engine.py#L417)。
-
+SGLang 提供 SRT（SGLang Runtime）Server 用于[服务 HTTP 请求](https://sgl-project.github.io/start/send_request.html)以及一个不依赖 HTTP 协议的[离线推理引擎](https://sgl-project.github.io/backend/offline_engine_api.html)。核心函数 [`launch_server`](https://github.com/sgl-project/sglang/blob/f8b0326934bacb7a7d4eba68fb6eddebaa6ff751/python/sglang/srt/server.py#L507) 和 [`launch_engine`](https://github.com/sgl-project/sglang/blob/f8b0326934bacb7a7d4eba68fb6eddebaa6ff751/python/sglang/srt/server.py#L418) 均定义在 [server.py](https://github.com/sgl-project/sglang/blob/f8b0326934bacb7a7d4eba68fb6eddebaa6ff751/python/sglang/srt/server.py) 中。其中，`launch_engine` 函数负责初始化核心 SRT Server 的组件。
 
 1. 设置 logging、Server 参数、CUDA/NCCL 环境变量以及进程间通信端口，配置 model 和 tokenizer。
 2. 如果 `dp_size > 1`，运行 `run_data_parallel_controller_process` 以启动多个 data parallel replicas；否则，在每个 `tp_rank` 上，以子进程的方式初始化一个 Scheduler，处理来自 TokenizerManager 的请求，并且管理 KV Cache。
@@ -91,6 +90,9 @@ Server 使用 FastAPI 应用定义 API endpoint，通过 [v1_chat_completions](h
 
 
 ## Scheduler 接收请求以及处理批次 (Scheduler Receive Requests and Process Batches)
+
+这张图给出了 Scheduler 的概览：
+![sglang_scheduler](./sglang_scheduler.svg)
 
 [Scheduler](https://github.com/sgl-project/sglang/blob/f8b0326934bacb7a7d4eba68fb6eddebaa6ff751/python/sglang/srt/managers/scheduler.py#L97) 作为 Server 的子进程运行，通过 `run_scheduler_process` 初始化，并通过 `event_loop_normal` 或 `event_loop_overlap` 执行无限的事件循环。
 
