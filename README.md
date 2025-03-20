@@ -38,7 +38,6 @@ $$
 - [小白视角：利用 vllm serve 新的 Embedding Model](https://zhuanlan.zhihu.com/p/715857723)
 - [小白视角：利用 SGL 来 Serve Embedding Model](https://zhuanlan.zhihu.com/p/715805386)
 - [小白视角：vllm 迁移到 SGLang 的体验与收获](https://zhuanlan.zhihu.com/p/714833359)
-- [SGLang Zero Overhead Scheduler](./sglang/zero-overhead-scheduler/zero-overhead-batch-scheduler.md)
 
 ## Scheduling and Routing
 
