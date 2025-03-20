@@ -1,5 +1,7 @@
 # scheduler 整体概览
 
+> 关于作者：我是王冠骅，电子科技大学计算机本硕研二(26毕业)，目前在找推理加速方向的实习，欢迎联系我！[281484683@qq.com](mailto:281484683@qq.com)
+
 Scheduler结构体位于sglang工程文件夹的`python/sglang/srt/managers/scheduler.py`中，是SGLang调度的核心。其从 tokenizer 接受大量的推理请求，选出一批请求来进行执行，负责的数据链路概览如下：
 
 ```python
