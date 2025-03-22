@@ -60,7 +60,7 @@ CPU-S 将调度好的批次传递给 CPU-L 后，便立即转向处理下一个�
 
 一图胜千言，下图代表了重叠的流水线。其中我们所 overlap 的，实际上是以虚线为分界线，重叠 **CPU-S** 和 **CPU-L + GPU** 这个的整体。图中我们假设第一个 batch 已经调度完成并直接运行，RunBatch 这个阶段代表我们把任务从 CPU-S 交给 CPU-L 上去，**请仔细注意 CPU-S 的各个 batch 序号。**
 
-![image-20250320212426343](image/zero-overhead-batch-scheduler/real_pipeline1.png)
+![image-20250320212426343](image/real_pipeline1.png)
 
 在流水线中，Scheduler 可以在不等待 Compute 阶段返回结果的情况下，继续调度下一个批次。然而，它不能一次性连续调度多个批次（例如，在 Compute Batch1 计算时，直接连续调度 5 个批次）。
 
@@ -73,7 +73,7 @@ CPU-S 将调度好的批次传递给 CPU-L 后，便立即转向处理下一个�
 
 [SGLang 博客](https://lmsys.org/blog/2024-12-04-sglang-v0-4/#zero-overhead-batch-scheduler)中的流水线是下图这么画的，把 CPU 看作了一个整体。我感觉 SGL 博客的流水线图更容易理解思想，本文的流水线图更容易理解代码细节（下节中会看到为什么拆开了 CPU-L）。
 
-![](static/DBbOb4bxwozO6hxjRoycEy9jnRg.png)
+![](image/sgl_blog_pipeline.png)
 
 ## Overlap 伪代码
 
