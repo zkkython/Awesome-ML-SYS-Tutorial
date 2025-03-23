@@ -38,7 +38,13 @@ My learning notes/codes for ML SYS.  English version is under development and on
   [[English version](./sglang/code-walk-through/readme.md)]：The lifecycle of a request in the SGLang Engine, a good start for SGLang beginners.
 
 - **Walk Through SGLang / VLLM Worker**  
-  [[English version](./sglang/sglang-worker/readme_eng.md)]：Demystifying the SGLang worker (model executor).
+  [[English version](./sglang/sglang-worker/readme.md)]：Demystifying the SGLang worker (model executor).
+
+- **Walk Through SGLang Scheduler**
+  [[English version](./sglang/sglang-scheduler/readme.md)] | [[中文版](./sglang/sglang-scheduler/readme-CN.md)] : Demystifying the SGLang Scheduler.
+
+- **Latency Accelerate For Weight Updates**
+  [[English version](./sglang/latency-accelerte-for-weight-updates/readme.md)] | [[中文版](./sglang/latency-accelerte-for-weight-updates/readme-CN.md)] : A detailed debugging investigation of weight update latency in a distributed system.
 
 - **Reward / Embed Model Server Engine**  
   [English TODO] | [[中文版](https://zhuanlan.zhihu.com/p/4148050391)] 
@@ -74,7 +80,7 @@ My learning notes/codes for ML SYS.  English version is under development and on
 ## ML System Fundamentals
 
 - **NCCL and NVIDIA TOPO**  
-  [English TODO] | [[中文版](./nccl/readme.md)]：An introduction to NCCL and NVIDIA topology.
+  [English](./nccl/readme_en.md) | [[中文版](./nccl/readme.md)]：An introduction to NCCL and NVIDIA topology.
 
 - **PyTorch Distributed**  
    [English TODO] | [[中文版](./torch-distributed/readme.md)]：Practical communication in `torch.distributed`.

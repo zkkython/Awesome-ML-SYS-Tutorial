@@ -45,7 +45,7 @@
 1. 基于 Attention Backend 的 Radix Cache 管理。
 2. `get_next_batch_to_run`：如何为每批次请求提取和写入 KV 缓存。
 3. `get_model_worker_batch`。
-4. `write_req_to_token_pool_trition`。
+4. `write_req_to_token_pool_triton`。
 5. 使用 CUDA Graphs 优化 Attention Backend。
 6. 重叠调度策略（overlap scheduling）。
 
@@ -90,6 +90,9 @@ Server 使用 FastAPI 应用定义 API endpoint，通过 [v1_chat_completions](h
 
 
 ## Scheduler 接收请求以及处理批次 (Scheduler Receive Requests and Process Batches)
+
+这张图给出了 Scheduler 的概览：
+![sglang_scheduler](./sglang_scheduler.svg)
 
 [Scheduler](https://github.com/sgl-project/sglang/blob/f8b0326934bacb7a7d4eba68fb6eddebaa6ff751/python/sglang/srt/managers/scheduler.py#L97) 作为 Server 的子进程运行，通过 `run_scheduler_process` 初始化，并通过 `event_loop_normal` 或 `event_loop_overlap` 执行无限的事件循环。
 

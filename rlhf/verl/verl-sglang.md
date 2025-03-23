@@ -2,9 +2,9 @@
 
 ## 问题背景
 
-对于 veRL 而言，inference engine 需要支持 SPMD，具体的 motivation 可以参考此[链接](https://github.com/vllm-project/vllm/issues/11400)。
+对于 veRL 而言，inference engine 需要支持 SPMD，具体的 motivation 可以参考此[链接](https://github.com/vllm-project/vllm/issues/11400)。SGLang 团队已经 merge 了相关 PR，可以参考[此处](https://github.com/sgl-project/sglang/commit/e3e0bc50a9d9644a183bc6dbb55919232196971d)。
 
-这是  veRL 团队和 SGLang 团队开发的 dev release，旨在将 SGLang 接入 veRL 的训练流程中。目前虽然落后主分支有一定距离，但是会在近期完成合并，欢迎大家尝鲜、体验并且提供反馈。
+这是  veRL 团队和 SGLang 团队开发的 dev release，旨在将 SGLang 接入 veRL 的训练流程中。会在近期完成合并，欢迎大家尝鲜、体验并且提供反馈。
 
 ## 环境配置
 
@@ -13,60 +13,86 @@
 ```bash
 python3 -m venv ~/.python/verl-sglang
 source ~/.python/verl-sglang/bin/activate
+python3 -m pip install --upgrade pip
+python3 -m pip install --upgrade uv
 ```
 
 ### 安装 dev 分支的 veRL
 
 ```bash
+cd ~
 git clone https://github.com/ocss884/verl verl-sglang
 cd verl-sglang
 git checkout dev_sglang
 git pull --no-ff
-pip install .
+python3 -m uv pip install .
 ```
 
-### 安装 dev 分支的 SGLang
+### Install SGLang Main Branch From Github Source
+
+这里需要从github安装最新的 SGLang main branch：
 
 ```bash
-pip install "sglang[all] @ git+https://github.com/fzyzcjy/sglang.git/@feat/overall_verl#egg=sglang&subdirectory=python" torch==2.5.1+cu121 --extra-index-url https://download.pytorch.org/whl/cu121 --find-links https://flashinfer.ai/whl/cu121/torch2.4/flashinfer-python/
+# Install latest SGlang from main branch
+python3 -m uv pip install "sglang[all] @ git+https://github.com/sgl-project/sglang.git/@main#egg=sglang&subdirectory=python" --find-links https://flashinfer.ai/whl/cu124/torch2.5/flashinfer-python
+```
+
+按照上述流程，很有可能缺少 `flash-attn`，这里建议手动安装：
+
+```bash
+python3 -m uv pip install wheel
+python3 -m uv pip install packaging
+python3 -m uv pip install flash-attn --no-build-isolation --no-deps
 ```
 
 这个过程可能出现若干问题，这里列出一些常见问题和解决方法：
 
 1. **vllm dependency 冲突**
 
-`ERROR: pip’s dependency resolver does not currently take into account all the packages that are installed. This behaviour is the source of the following dependency conflicts. verl 0.1 requires vllm<=0.6.3, but you have vllm 0.6.4.post1 which is incompatible.`
+`ERROR: pip’s dependency resolver does not currently take into account all the packages that are installed. This behaviour is the source of the following dependency conflicts. verl 0.2 requires vllm<=0.6.3, but you have vllm 0.7.2 which is incompatible.`
 
-可以直接忽视。
+实际上，verl-SGLang 发行版不需要 vllm 兼容，可以直接忽视。
 
-2. **flash-attn 不存在**
-
-可能虚拟环境不一定有 wheel 和 packaging，前一步 flash_attn 安装失败。这里需要手动再安装一次：
-
-```bash
-pip install wheel, packaging
-pip install flash-attn --no-build-isolation --no-deps
-```
-
-3. **安装 flash_attn 时出现 CUDA ERROR**
+2. **安装 flash_attn 时出现 CUDA ERROR**
 
 如果出现 `CUDA ERROR`，尝试修改 `CUDA_HOME` 和 `LD_LIBRARY_PATH` 到本地的 cuda，我这里是 `12.1`。
 
 ```bash
-export LD_LIBRARY_PATH=/usr/local/cuda-12.1/lib64:$LD_LIBRARY_PATH
-export CUDA_HOME=“/usr/local/cuda-12.1”
+export CUDA_HOME=/usr/local/cuda-12.1
 ```
 
-成功安装后，可以检测下相关库的配置：
+3. `from torch._C import *` 报错，`undefined symbol:  __nvJitLinkComplete_12_4, version libnvJitLink.so.12`
 
-- sglang 0.4.1.post5  
-- torch2.5.1+cu121  
-- flashinfer 0.1.6+cu121torch2.4  
-- verl 0.1  
-- ray 2.42.1  
+这个太经典了，torch 各种 symbol 不匹配，我一般的解决方案如下：
+
+```bash
+# 查询自己的 python 路径
+which python
+# 输出为 /data/chayenne/.python/verl-sglang/bin/python
+```
+
+```bash
+# 接着找到 nvjitlink 的路径，操作类似
+
+ls /data/chayenne/.python/verl-sglang/lib64/python3.10/site-packages/nvidia/nvjitlink/lib/
+```
+
+```bash
+# 把 nvjitlink 的路径添加到 LD_LIBRARY_PATH 中
+
+export LD_LIBRARY_PATH=/data/chayenne/.python/verl-sglang/lib64/python3.10/site-packages/nvidia/nvjitlink/lib/:$LD_LIBRARY_PATH
+```
+
+成功安装后，可以检测下相关库的配置，仅做参考：
+
+- sglang 0.4.3.post2 
+- torch 2.5.1
+- flashinfer_python 0.2.2.post1+cu124torch2.5
+- verl 0.2.0.dev0
+- ray 2.43.0
 - flash-attn 2.7.4.post1  
 
-### 安装 megatron 作为 veRL 的 training engine
+<!-- ### 安装 megatron 作为 veRL 的 training engine
 
 veRL 目前也支持使用 Megatron 作为 training engine，使用下面的命令安装 dev 版本的 megatron：
 
@@ -114,61 +140,54 @@ sudo apt update
 sudo apt install gcc-13 g++-13
 sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-13 60
 sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-13 60
+``` -->
+
+## 8 卡测试 SGLang
+
+准备一台 8 卡机器，注意对拍默认会使用 `wandb` 和环境变量 `WANDB_API_KEY` 记录训练 metrics。8 x H100 上耗时约 4h。
+
+使用前需要配置好 `WANDB_API_KEY`，可以参考[这个过程](https://community.wandb.ai/t/where-can-i-find-the-api-token-for-my-project/7914)。
+
+```bash
+export WANDB_API_KEY={YOUR_WANDB_API_KEY}
+
+# 定义这个时间戳函数
+function now() {
+    date '+%Y-%m-%d-%H-%M'
+}
 ```
 
-## 测试 PPO 功能
-
-首先构造数据集，默认保存至 `~/data/gsm8k`。
+可以直接运行来进行对拍：
 
 ```bash
 python3 examples/data_preprocess/gsm8k.py
+python3 examples/data_preprocess/math_dataset.py
+mkdir log
+bash examples/ppo_trainer/rollout_callibration.sh sglang $(now)
 ```
 
-可以直接运行 `bash test_sglang.sh` 测试 SGLang 的 PPO 功能。具体运行的命令如下：
+<!--
 
-<details>
-<summary>运行 PPO 的命令</summary>
+### vLLM
+
+注意，vllm 和 sglang 是有依赖冲突的，直接从 verl main branch 安装 vllm 依赖的 verl，然后进行对拍。这里用的是 vllm 0.6.3。
 
 ```bash
-DATA_DIR=$HOME/data/gsm8k
-python3 -m verl.trainer.main_ppo \
-    actor_rollout_ref.rollout.name=sglang \
-    data.train_files=$DATA_DIR/train.parquet \
-    data.val_files=$DATA_DIR/test.parquet \
-    data.train_batch_size=64 \
-    data.val_batch_size=1312 \
-    data.max_prompt_length=512 \
-    data.max_response_length=1 \
-    actor_rollout_ref.model.path=Qwen/Qwen2-7B-Instruct \
-    actor_rollout_ref.actor.optim.lr=1e-6 \
-    actor_rollout_ref.model.use_remove_padding=True \
-    actor_rollout_ref.actor.ppo_mini_batch_size=64 \
-    actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=16 \
-    actor_rollout_ref.model.enable_gradient_checkpointing=True \
-    actor_rollout_ref.actor.fsdp_config.param_offload=True \
-    actor_rollout_ref.actor.fsdp_config.optimizer_offload=True \
-    actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=16 \
-    actor_rollout_ref.rollout.tensor_model_parallel_size=2 \
-    actor_rollout_ref.rollout.gpu_memory_utilization=0.4 \
-    actor_rollout_ref.ref.log_prob_micro_batch_size=16 \
-    actor_rollout_ref.ref.fsdp_config.param_offload=True \
-    critic.optim.lr=1e-5 \
-    critic.model.use_remove_padding=True \
-    critic.model.path=Qwen/Qwen2-7B-Instruct \
-    critic.model.enable_gradient_checkpointing=True \
-    critic.ppo_micro_batch_size=16 \
-    critic.model.fsdp_config.param_offload=True \
-    critic.model.fsdp_config.optimizer_offload=True \
-    algorithm.kl_ctrl.kl_coef=0.001 \
-    trainer.critic_warmup=0 \
-    trainer.logger=['console'] \
-    +trainer.val_before_train=False \
-    trainer.default_hdfs_dir=null \
-    trainer.n_gpus_per_node=4 \
-    trainer.nnodes=1 \
-    trainer.save_freq=-1 \
-    trainer.test_freq=10 \
-    trainer.total_epochs=2 2>&1 | tee verl_demo.log
+cd ~
+python3 -m venv ~/.python/verl-vllm
+source ~/.python/verl-vllm/bin/activate
+python3 -m pip install --upgrade pip
+python3 -m pip install --upgrade uv
+git clone https://github.com/volcengine/verl.git
+cd verl
+python3 -m uv pip install .
+python3 -m uv pip install flash-attn --no-build-isolation
 ```
 
-</details>
+安装 verl-vllm 后，继续运行如下指令来测试 PPO 功能：
+
+```bash
+mkdir log
+bash ~/verl-sglang/examples/ppo_trainer/rollout_callibration.sh vllm $(now)
+```
+-->
