@@ -2,6 +2,8 @@
 
 ## [English version](./readme.md) | [简体中文](./readme-CN.md)
 
+> About the Author: Hi, I'm Guanhua Wang, a second-year Master's student in Computer Science at UESTC. I'm currently seeking an internship in inference acceleration. Feel free to get in touch at [281484683@qq.com](mailto:281484683@qq.com)!
+
 The Scheduler structure is located in the file python/sglang/srt/managers/scheduler.py of the SGLang project, and it serves as the core of SGLang scheduling. It receives numerous inference requests from the tokenizer, selects a batch of requests for execution, and is responsible for the following data flow overview:
 
 ```python
