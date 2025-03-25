@@ -15,10 +15,13 @@ git pull
 ### 创建新的 docker
 
 ```bash
+# 如果你的系统没有配置过 HF_TOKEN 和 WANDB_API_KEY，请先配置好
+# 这里的 cache 映射路径是在 atlas 集群上，如果需要使用自己的路径，请自行修改
 docker run -it --name h100_verl_{your_name} --gpus all \
     --shm-size 32g \
     -v /.cache:/root/.cache \
     --env "HF_TOKEN=$HF_TOKEN" \
+    --env "WANDB_API_KEY=$WANDB_API_KEY" \
     --ipc=host \
     lmsysorg/sglang:latest \
     /bin/bash
@@ -66,25 +69,25 @@ git checkout async-tp
 
 ### 配置 python 环境
 
-#### 从 github 安装最新的 SGLang main branch
+先安装 veRL：
+
+```bash
+python3 -m uv pip install .
+python3 -m uv pip install -r ./requirements.txt
+```
+
+安装 SGLang：
 
 ```bash
 python3 -m uv pip install "sglang[all] @ git+https://github.com/sgl-project/sglang.git/@main#egg=sglang&subdirectory=python" --find-links https://flashinfer.ai/whl/cu124/torch2.5/flashinfer-python
 ```
 
-手动安装 `flash-attn`：
+手动安装 flash-attn：
 
 ```bash
 python3 -m uv pip install wheel
 python3 -m uv pip install packaging
 python3 -m uv pip install flash-attn --no-build-isolation --no-deps
-```
-
-#### 安装 veRL
-
-```bash
-python3 -m uv pip install .
-python3 -m uv pip install -r ./requirements.txt
 ```
 
 ## 4 卡测试 SGLang

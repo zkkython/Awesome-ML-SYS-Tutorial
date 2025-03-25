@@ -5,13 +5,23 @@
 ### 创建新的 docker
 
 ```bash
+# 如果你的系统没有配置过 HF_TOKEN 和 WANDB_API_KEY，请先配置好
+# 这里的 cache 映射路径是在 atlas 集群上，如果需要使用自己的路径，请自行修改
 docker run -it --name h100_verl_{your_name} --gpus all \
     --shm-size 32g \
     -v /.cache:/root/.cache \
     --env "HF_TOKEN=$HF_TOKEN" \
+    --env "WANDB_API_KEY=$WANDB_API_KEY" \
     --ipc=host \
     lmsysorg/sglang:latest \
     /bin/bash
+```
+
+进入 docker 后，可以查看被映射的环境变量：
+
+```bash
+echo $HF_TOKEN
+echo $WANDB_API_KEY
 ```
 
 以后每次从 docker 里面 exit 出来，再用这个指令可以重启：
@@ -36,18 +46,7 @@ python3 -m pip install --upgrade pip
 python3 -m pip install --upgrade uv
 ```
 
-安装 SGLang
-
-```bash
-cd ~
-git clone https://github.com/sgl-project/sglang.git
-cd sglang
-
-python3 -m uv pip install --upgrade pip
-python3 -m uv pip install -e "python[all]" --find-links https://flashinfer.ai/whl/cu124/torch2.5/flashinfer-python
-```
-
-安装 veRL
+先安装 veRL，再安装 SGLang。
 
 ```bash
 cd ~
@@ -55,6 +54,16 @@ git clone https://github.com/volcengine/verl.git
 cd verl
 python3 -m uv pip install .
 python3 -m uv pip install -r ./requirements.txt
+```
+
+后安装 SGLang，为了对齐 torch 版本。
+
+```bash
+cd ~
+git clone https://github.com/sgl-project/sglang.git
+cd sglang
+python3 -m uv pip install --upgrade pip
+python3 -m uv pip install -e "python[all]" --find-links https://flashinfer.ai/whl/cu124/torch2.5/flashinfer-python
 ```
 
 ## 4 卡启动 Qwen2.5VL GRPO 训练脚本，并且使用 SGLang 作为 rollout 引擎
