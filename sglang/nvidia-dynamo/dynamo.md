@@ -10,32 +10,44 @@ Please note that you need Ubuntu 24.04 with a x86_64 CPU.
 To ensure compatibility we recommend to use `nvidia/cuda:12.8.1-cudnn-devel-ubuntu24.04` as base image and run it on [docker](https://hub.docker.com/r/nvidia/cuda).
 You will furthermore need the rust package manager [cargo](https://doc.rust-lang.org/cargo/getting-started/installation.html) installed.
 
-### Install dynamo
+### System dependencies
 
 ```
 apt-get update
 DEBIAN_FRONTEND=noninteractive apt-get install -yq python3-dev python3-pip python3-venv libucx0
-python3 -m venv venv
-source venv/bin/activate
 
-pip install ai-dynamo[all]
+# Install Rust and Cargo
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+source "$HOME/.cargo/env"
 ```
 
 ### Install SGLang
 
 ```
-pip install pip
 pip install sgl-kernel --force-reinstall --no-deps
 pip install "sglang[all]==0.4.2" --find-links https://flashinfer.ai/whl/cu124/torch2.4/flashinfer/
 ```
 
-### Install rust packages
+### Install Dynamo
 
-Clone [the repo](https://github.com/ai-dynamo/dynamo), cd into it and run:
+There are two options to install Dynamo:
+
+#### Option 1: Install Dynamo from source
 
 ```
+git clone https://github.com/ai-dynamo/dynamo.git
+cd dynamo
 cargo build --features sglang
 ```
+
+#### Option 2: Install Dynamo from PyPI
+
+```
+pip install ai-dynamo[all] && pip install "outlines==0.0.46"
+```
+
+or `pip install ai-dynamo`
+
 
 ## Inference
 
@@ -114,3 +126,7 @@ This will create an `output.jsonl` with the inference results:
 {"text":"What is the capital of France?","response":"The capital of France is Paris.","tokens_in":7,"tokens_out":7,"elapsed_ms":1566}
 {"text":"What is the capital of Spain?","response":".The capital of Spain is Madrid.","tokens_in":7,"tokens_out":7,"elapsed_ms":855}
 ```
+
+## Debug
+
+Dynamo uses SGLang as a serving backend, spawning sglang servers as workers. However, please be aware that the work to unify and enable logging is incomplete (https://github.com/ai-dynamo/dynamo/issues/361). If SGLang worker runs into error upon initialization, `dynamo-run` may exit silently.
