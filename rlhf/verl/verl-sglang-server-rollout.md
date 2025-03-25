@@ -9,6 +9,7 @@
 ```bash
 git clone https://github.com/yitianlian/sglang-fork.git
 cd sglang-fork
+git checkout feature/verlengine_server
 # If use conda
 conda create sglang-verl-server python=3.11
 conda activate sglang-verl-server
