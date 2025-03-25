@@ -43,8 +43,10 @@ cargo build --features sglang
 #### Option 2: Install Dynamo from PyPI
 
 ```
-pip install ai-dynamo[all] "outlines==0.0.46"
+pip install ai-dynamo[all] && pip install "outlines==0.0.46"
 ```
+
+or `pip install ai-dynamo`
 
 
 ## Inference
