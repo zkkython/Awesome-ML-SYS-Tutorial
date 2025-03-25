@@ -64,7 +64,7 @@ cd veRL-multiturn-rollout
 git checkout async-tp
 ```
 
-### 配置python环境
+### 配置 python 环境
 
 #### 从 github 安装最新的 SGLang main branch
 
@@ -80,9 +80,10 @@ python3 -m uv pip install packaging
 python3 -m uv pip install flash-attn --no-build-isolation --no-deps
 ```
 
-#### 安装requirements.txt
+#### 安装 veRL
 
 ```bash
+python3 -m uv pip install .
 python3 -m uv pip install -r ./requirements.txt
 ```
 
