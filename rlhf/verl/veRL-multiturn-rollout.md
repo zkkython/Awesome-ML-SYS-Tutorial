@@ -105,7 +105,11 @@ function now() {
 ### 运行
 
 ```bash
-# change the visible devices on your own
+# First make sure the now() function is available in current shell
+# Create logs directory if it doesn't exist
+mkdir -p logs
+
+# Set GPUs and run with better log organization
 export CUDA_VISIBLE_DEVICES=0,1,2,3
-nohup python3 -m verl.trainer.main_ppo trainer.experiment_name=qwen7b_sft2_$(now) > log_$(now).txt
+nohup python3 -m verl.trainer.main_ppo trainer.experiment_name=qwen7b_sft2_$(now) > logs/qwen7b_sft2_$(now).log 2>&1 &
 ```
