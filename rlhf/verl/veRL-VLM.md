@@ -64,6 +64,6 @@ export WANDB_API_KEY={YOUR_WANDB_API_KEY}
 # 拉取并预处理geo3k数据集
 python3 examples/data_preprocess/geo3k.py --local_dir ~/data/geo3k
 
-# 启动GRPO训练脚本
+# 启动GRPO训练脚本， 记得去掉examples/grpo_trainer/run_qwen2_5_vl-7b.sh中的“$@”
 bash examples/grpo_trainer/run_qwen2_5_vl-7b.sh sglang
 ```
