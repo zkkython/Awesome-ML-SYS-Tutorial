@@ -2,6 +2,16 @@
 
 ## 环境配置
 
+### 更新 verl-multiturn-rollout 的代码
+
+```bash
+# 在 docker 外面去 git pull 这个 repo，不要在 docker 里面
+#否则你得先获得这个 repo 的权限并且把你的 docker 的 key 加到你的 github 账号里面
+# 才可以直接 pull，但是在 docker 外面，atlas 上用的是我的号在鉴权，可以直接 pull
+cd /.cache/veRL-multiturn-rollout
+git pull
+```
+
 ### 创建新的 docker
 
 ```bash
@@ -45,20 +55,9 @@ python3 -m pip install uv
 
 ### clone veRL-multiturn-rollout 并切换到 async-tp 分支
 
-```bash
-cd ~
-git clone https://github.com/zyzshishui/veRL-multiturn-rollout.git
-cd veRL-multiturn-rollout
-git checkout async-tp
-```
-
 PS：这个分支还是 private 的，需要先我们内部邀请加入，不然就下载下源代码，直接传到 docker 里面。我其实自己在 atals 的 `/.cache` 里面偷偷塞了一个，所以可以直接用：
 
 ```bash
-# 先更新一下代码
-cd /root/.cache/veRL-multiturn-rollout
-git pull
-
 cd ~
 cp -r /root/.cache/veRL-multiturn-rollout .
 cd veRL-multiturn-rollout
@@ -67,7 +66,7 @@ git checkout async-tp
 
 ### 配置python环境
 
-#### 从github安装最新的 SGLang main branch
+#### 从 github 安装最新的 SGLang main branch
 
 ```bash
 python3 -m uv pip install "sglang[all] @ git+https://github.com/sgl-project/sglang.git/@main#egg=sglang&subdirectory=python" --find-links https://flashinfer.ai/whl/cu124/torch2.5/flashinfer-python
