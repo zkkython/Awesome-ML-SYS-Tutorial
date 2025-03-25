@@ -12,6 +12,7 @@ cd sglang-fork
 # If use conda
 conda create sglang-verl-server python=3.11
 conda activate sglang-verl-server
+pip install --upgrade pip
 pip install -e "python[all]" --find-links https://flashinfer.ai/whl/cu124/torch2.5/flashinfer-python
 
 cd python
