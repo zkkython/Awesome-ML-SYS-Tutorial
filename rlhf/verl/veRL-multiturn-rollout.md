@@ -16,7 +16,7 @@ docker run -it --name h100_verl_{your_name} --gpus all \
 
 以后每次从 docker 里面 `exit` 出来，再用这个指令可以重启：
 
-```
+```bash
 docker start -i h100_{your_name}
 ```
 
@@ -45,7 +45,7 @@ python3 -m pip install uv
 
 ### clone veRL-multiturn-rollout 并切换到 async-tp 分支
 
-```
+```bash
 cd ~
 git clone https://github.com/zyzshishui/veRL-multiturn-rollout.git
 cd veRL-multiturn-rollout
@@ -54,7 +54,11 @@ git checkout async-tp
 
 PS：这个分支还是 private 的，需要先我们内部邀请加入，不然就下载下源代码，直接传到 docker 里面。我其实自己在 atals 的 `/.cache` 里面偷偷塞了一个，所以可以直接用：
 
-```
+```bash
+# 先更新一下代码
+cd /root/.cache/veRL-multiturn-rollout
+git pull
+
 cd ~
 cp -r /root/.cache/veRL-multiturn-rollout .
 cd veRL-multiturn-rollout
