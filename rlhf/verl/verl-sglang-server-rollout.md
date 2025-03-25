@@ -4,6 +4,21 @@
 
 为实现这一目标，我将 SGLang 的 `launch_server` 函数改写为 `launch_server_from_verl_engine`，允许我们在已有 `VerlEngine` 初始化的基础上，复用其 `TokenizerManager` 和 `SchedulerInfo`，从而避免重复创建通信管道或资源冲突。
 
+## 运行流程
+
+```bash
+git clone https://github.com/yitianlian/sglang-fork.git
+cd sglang-fork
+# If use conda
+conda create sglang-verl-server python=3.11
+conda activate sglang-verl-server
+pip install -e "python[all]" --find-links https://flashinfer.ai/whl/cu124/torch2.5/flashinfer-python
+
+cd python
+python test_verl_engine_server.py
+```
+
+
 ## 具体修改内容
 
 ### 1. 增加 `launch_server_from_verl_engine`
