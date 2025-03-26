@@ -59,7 +59,7 @@ KL divergence is estimated using the approximator, which is defined as follows:
 $$
 \mathrm{D}_{\mathrm{KL}}[\pi_{\theta}||\pi_{\mathrm{ref}}] = \frac{\pi_{\mathrm{ref}}(O_{i,t} \mid q, O_{i,<t})}{\pi_{\theta}(O_{i,t} \mid q, O_{i,<t})} - \log \frac{\pi_{\mathrm{ref}}(O_{i,t} \mid q, O_{i,<t})}{\pi_{\theta}(O_{i,t} \mid q, O_{i,<t})} - 1
 $$
-
+r
 ## 1.4 Computing the loss
 
 The objective is to **maximize the advantage** while ensuring that the model **remains close to the reference policy**. Consequently, the loss is defined as follows:
