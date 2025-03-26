@@ -16,7 +16,7 @@ conda activate sglang-verl-server
 pip install --upgrade pip
 pip install -e "python[all]" --find-links https://flashinfer.ai/whl/cu124/torch2.5/flashinfer-python
 
-cd python
+cd test/srt
 python test_verl_engine_server.py
 ```
 
