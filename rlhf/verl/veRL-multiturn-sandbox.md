@@ -1,12 +1,10 @@
 # veRL-multiturn Sandbox
 
-【说下文档目的 + 结构】
+当前版本的 `veRL` 在 `swedev` 任务下与环境交互的文档，尽可能还原了源码里 sandbox 的调用方式，用于快速搭建一个 sandbox for veRL
 
-【哪个 sandbox，怎么配环境，如何运行，这个是干嘛的】
+## 建立 session
 
-## `/start_instance`
-
-- URL: `http://http://60.165.239.98:5000/start_instance`
+- URL: `http://60.165.239.98:5000/start_instance`
 - 方法: `POST`
 - 请求参数
   - <string> `instance_hash` veRL 端根据训练数据中的 `instance_id` 传递过来，用于标识要处理的项目/任务/PR。
@@ -37,17 +35,42 @@
 
 **对应源码**
 
-`verl.utils.swedev_utils.py initialize_runtime()`
+```python
+# verl.utils.swedev_utils.py
+async def initialize_runtime(instance_id):
+    url = get_api(type="start")
+    payload = {"instance_hash": instance_id}
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=payload, timeout=600) as response:
+                result = await response.json()
+                return result
+    except Exception as e:
+        print(f"Initializing - API call failed: {e}")
+        return None
+```
 
-![image-20250325193808588](assets/code_initialize_runtime.png)
+```python
+# 调用点：verl.workers.agentic.async_rollout.py AsyncRollout.generate_sequence.swedev_start()
+async def swedev_start(index):
+            try:
+                result = await initialize_runtime(prompts.batch['instance_id'][index // n].item())
+                print(result)
+                return {
+                    "prompt_ids": _pre_process_inputs(tokenizer.pad_token_id, input_ids[index]),
+                    "sid": result["sid"],
+                    "sids": int(result["sid"]), # will be treated as a obs metric, thus, will be gathered into batch, and later used in reward acquisition
+                }
+            except Exception as e:
+                # TODO: return true for handle api instead of raising an error
+                print(f"Error processing instance: {e}")
+                # in original logic, mismatched sids count and instance_ids count will cause error eventually, better raise now
+                raise
+```
 
-调用点：`verl.workers.agentic.async_rollout.py AsyncRollout.generate_sequence.swedev_start()`
+## 处理 action
 
-![image-20250325193605024](assets/code_swedev_start.png)
-
-## `/process_action`
-
-- URL: `http://http://60.165.239.98:5000/process_action`
+- URL: `http://60.165.239.98:5000/process_action`
 - 方法: `POST`
 - 请求参数
   - <string> `sid` 
@@ -79,13 +102,45 @@
 
 **对应源码**
 
-`verl.utils.swedev_utils.py call_observation_api()`
+```python
+# verl.utils.swedev_utils.py
+async def call_observation_api(sid, text: str):
+    if isinstance(sid, torch.Tensor):
+        sid = sid.item()
+    url = get_api(type="action")
+    payload = {
+        "sid": sid,
+        "content": text,
+    }
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=payload) as response:
+                return await response.json()
+    except Exception as e:
+        print(f"Observation - API call failed: {e}")
+        return None  
+```
 
-![image-20250325215322352](assets/code_call_observation_api.png)
+```python
+# 调用点：verl.workers.agentic.tasks.py
+async def swe_dev_obs(action_ids, sid, tokenizer, **kwargs):
+    action = tokenizer.decode(action_ids, skip_special_tokens=False)
+    if is_stop(action):
+        print(f"Action stop: {action}")
+        return {"done": True, "ids": [], "observation_times": 0}
 
-## `/postprocess`
+    result = call_observation_api(sid, action)
+    # TODO(haoran): handle here
+    try:
+        obs = result["content"]
+    except:
+        obs = "Error"
+    return {"done": False, "ids": tokenizer.encode(obs), "observation_times": 1}
+```
 
-- URL: `http://http://60.165.239.98:5000/postprocess`
+## 后处理
+
+- URL: `http://60.165.239.98:5000/postprocess`
 - 方法: `POST`
 - 请求参数
   - <string> `sid` session id
@@ -116,15 +171,33 @@
   1. 多轮对话结束后收尾，sandbox可在这里执行“清理资源”“停止容器”“合并最终日志”等。
   2. 返回 JSON 的内容不参与后续对话，但可记录到日志。
 
-**对应源码**
+**对应源码** 
 
-`verl.utils.swedev_utils.py call_postprocess_api()`
+```python
+# verl.utils.swedev_utils.py
+async def call_postprocess_api(sid: str):
+    url = get_api(type="postprocess")
+    if isinstance(sid, torch.Tensor):
+        sid = sid.item()
+    payload = {"sid": sid}
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=payload, timeout=600) as response:
+                return await response.json()
+    except Exception as e:
+        print(f"Postprocess - API call failed: {e}")
+        return None
+```
 
-![image-20250325195712909](assets/code_call_postprocess_api.png)
+```python
+# 调用点：verl.workers.agentic.tasks.py
+async def swe_dev_end(sid, _done):
+    await asyncio.to_thread(call_postprocess_api, sid)
+```
 
-## `/compute_reward`
+## 计算 reward
 
-- URL: `http://http://60.165.239.98:5000/compute_reward`
+- URL: `http://60.165.239.98:5000/compute_reward`
 - 方法: `POST`
 - 请求参数
   - <string> `sid` session id
@@ -158,16 +231,68 @@
 
 **对应源码**
 
-`verl.workers.reward_manager.swedev.py SWEDevRewardManager.fetch_reward()`
+```python
+# verl.workers.reward_manager.swedev.py SWEDevRewardManager.fetch_reward()
+async def fetch_reward(self, sid: torch.Tensor, session: aiohttp.ClientSession) -> float:
+        """Fetch reward from API for a single instance"""
+        try:
+            payload = {"sid": sid.item()}
+            async with session.post(get_api(type="reward"), json=payload, timeout=aiohttp.ClientTimeout(total=300)) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    return float(calc_reward(result))
+                else:
+                    print(f"fetch_reward - API request failed with text {response.text} for sid: {sid}")
+                    return 0.0
+        except Exception as e:
+            print(f"fetch_reward - Error fetching reward for sid {sid}: {e}")
+            return 0.0
+```
 
-![image-20250325185102993](assets/code_fetch_reward.png)
+```python
+# verl.utils.swedev_utils.py 
+def calc_reward(reward_json):
+    # patch_is_None
+    # patch_exists
+    # patch_succesfully_applied
+    # resolved
+    # f2p_count
+    # f2p_total
+    # p2p_count
+    # p2p_total
+    
+    if 'reward' in reward_json:
+        return reward_json['reward']
+    else:
+        try:
+            return reward_json['f2p_count'] / reward_json['f2p_total']
+        except:
+            return 0.0
+```
 
-![image-20250325185124860](assets/code_get_api.png)
-
-![image-20250325191225571](assets/code_calc_reward.png)
+```python
+# verl.utils.swedev_utils.py 
+def get_api(type):
+    base_url = random.sample([
+        "http://60.165.239.98:5000",
+        "http://60.165.239.99:5000"
+    ], 1)[0]
+    # TODO: only support shouyun1 now
+    base_url = "http://60.165.239.98:5000"
+    assert type in ["reward", "action", "start", "postprocess"]
+    if type == "reward":
+        return f"{base_url}/compute_reward"
+    elif type == "action":
+        return f"{base_url}/process_action"
+    elif type == "start":
+        return f"{base_url}/start_instance"
+    elif type == "postprocess":
+        return f"{base_url}/postprocess"
+```
 
 ## 流程图
 
+```
 train.py
   └── main() / run_ppo()
         └── main_task()
@@ -184,13 +309,11 @@ train.py
                     └── SWEDevRewardManager.__call__()
                           └── asyncio.run(fetch_reward())
                                 └── POST /compute_reward
+```
 
+## bkp (写多了，这里用不上)
 
-
-## bkp(写多了，这里用不上)
-
-### /observation_kilt/ (for d-r task)
-
+### d-r task 中的 observation
 - URL: `http://172.16.65.43:8888/observation_kilt/`
 - 方法: `POST`
 - 请求参数
@@ -229,6 +352,47 @@ train.py
 
 #### 对应源码
 
- `verl/workers/agentic/async_rollout.py AsyncRollout.generatr_sequences.dr_obs()`
+```python
+# verl/workers/agentic/async_rollout.py AsyncRollout.generatr_sequences.dr_obs()
+async def dr_obs(action_ids, sid, tokenizer, **_):
+            # find <|observation|> token part
+            sid = sid % len(input_ids)
+            dr_storage_sid2seq[sid].extend(action_ids)
+            stop_id = action_ids[-1]
+            stop_token = tokenizer.decode([stop_id])
+            print(f"stop token: [{stop_id}] - [{stop_token}]")
 
-![image-20250325112526753](assets/code_generate_sequence.png)
+            # only finish with <|observation|> token can be multi-turn
+            if not stop_token.strip() == '<|observation|>':
+                return {"done": True, "ids": [], "observations_times": 0, "failed_times": 0}
+            action = tokenizer.decode(action_ids, skip_special_tokens=False)
+            text = action.split("<|observation|>")[0].strip()
+
+            # call api part
+            url = "http://172.16.65.43:8888/observation_kilt/"
+            payload = {"content": text, "translate": True}
+            failed = 0
+            for i in range(5):
+                try:
+                    async with httpx.AsyncClient() as client:
+                        response = await client.post(url, json=payload)
+                        ret = response.json()
+                        break
+                except Exception as e:
+                    print(f"API call failed: {e}")
+                    await asyncio.sleep(1 + i)
+            else:
+                ret = [{"content": "API call failed, you may try again."}]
+                failed = 1
+
+            # combine part
+            obv_combined = ['\n' + obv['content'].strip() for obv in ret]
+            obs_text = f"{'<|observation|>'.join(obv_combined)}<|assistant|>\n"
+            ret_ids = tokenizer.encode(obs_text)
+            dr_storage_sid2seq[sid].extend(ret_ids)
+
+            if torch.distributed.get_rank() == 0:
+                print(f"nodedup {torch.distributed.get_rank()=} dr_obs: {obs_text=}")
+
+            return {"done": False, "ids": ret_ids, "observations_times": 1, "failed_times": failed}
+```
