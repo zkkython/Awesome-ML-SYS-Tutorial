@@ -35,11 +35,11 @@
 
 `verl.utils.swedev_utils.py initialize_runtime()`
 
-![image-20250325193808588](assets/image-20250325193808588.png)
+![image-20250325193808588](assets/code_initialize_runtime.png)
 
 调用点：`verl.workers.agentic.async_rollout.py AsyncRollout.generate_sequence.swedev_start()`
 
-![image-20250325193605024](assets/image-20250325193605024.png)
+![image-20250325193605024](assets/code_swedev_start.png)
 
 ### /process_action
 
@@ -77,7 +77,7 @@
 
 `verl.utils.swedev_utils.py call_observation_api()`
 
-![image-20250325215322352](assets/image-20250325215322352.png)
+![image-20250325215322352](assets/code_call_observation_api.png)
 
 ### /postprocess
 
@@ -116,7 +116,7 @@
 
 `verl.utils.swedev_utils.py call_postprocess_api()`
 
-![image-20250325195712909](assets/image-20250325195712909.png)
+![image-20250325195712909](assets/code_call_postprocess_api.png)
 
 ### /compute_reward
 
@@ -156,11 +156,11 @@
 
 `verl.workers.reward_manager.swedev.py SWEDevRewardManager.fetch_reward()`
 
-![image-20250325185102993](assets/image-20250325185102993.png)
+![image-20250325185102993](assets/code_fetch_reward.png)
 
-![image-20250325185124860](assets/image-20250325185124860.png)
+![image-20250325185124860](assets/code_get_api.png)
 
-![image-20250325191225571](assets/image-20250325191225571.png)
+![image-20250325191225571](assets/code_calc_reward.png)
 
 ## 流程图
 
@@ -227,4 +227,4 @@ train.py
 
  `verl/workers/agentic/async_rollout.py AsyncRollout.generatr_sequences.dr_obs()`
 
-![image-20250325112526753](assets/image-20250325112526753.png)
+![image-20250325112526753](assets/code_generate_sequence.png)
