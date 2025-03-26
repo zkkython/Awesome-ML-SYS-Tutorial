@@ -1,19 +1,23 @@
 # veRL-multiturn Sandbox
 
-### /start_instance
+【说下文档目的 + 结构】
+
+【哪个 sandbox，怎么配环境，如何运行，这个是干嘛的】
+
+## `/start_instance`
 
 - URL: `http://http://60.165.239.98:5000/start_instance`
 - 方法: `POST`
 - 请求参数
-  - <string> `instance_hash` VerL 端根据训练数据中的 `instance_id`传递过来，用于标识要处理的项目/任务/PR。
+  - <string> `instance_hash` veRL 端根据训练数据中的 `instance_id` 传递过来，用于标识要处理的项目/任务/PR。
 - 返回参数
   - <string> `sid` session id，用于标识当前会话。后续的 `/process_action`、`/postprocess`、`/compute_reward` 都会带上这个 `sid`，告诉 sandbox 是哪一个任务。
 
 - 功能
-  1. Sandbox 可以在此时建立一个session上下文 并存到内存或数据库里：`context_map[sid] = {...}`
+  1. Sandbox 可以在此时建立一个 session 上下文并存到内存或数据库里：`context_map[sid] = {...}`；
   2. 后续的接口就可以通过 `sid` 找回任务状态。
 
-#### example
+**example**
 
 - request
 
@@ -31,7 +35,7 @@
 }
 ```
 
-#### 对应源码
+**对应源码**
 
 `verl.utils.swedev_utils.py initialize_runtime()`
 
@@ -41,7 +45,7 @@
 
 ![image-20250325193605024](assets/code_swedev_start.png)
 
-### /process_action
+## `/process_action`
 
 - URL: `http://http://60.165.239.98:5000/process_action`
 - 方法: `POST`
@@ -54,7 +58,7 @@
 - 功能
   1. sandbox 把 `content` 视为一次action提交，如将用户/模型产生的代码写进临时文件并运行测试。
 
-#### example
+**example**
 
 - request
 
@@ -73,13 +77,13 @@
 }
 ```
 
-#### 对应源码
+**对应源码**
 
 `verl.utils.swedev_utils.py call_observation_api()`
 
 ![image-20250325215322352](assets/code_call_observation_api.png)
 
-### /postprocess
+## `/postprocess`
 
 - URL: `http://http://60.165.239.98:5000/postprocess`
 - 方法: `POST`
@@ -88,10 +92,10 @@
 - 返回参数
   - 自定义
 
-1. sandbox接收请求，处理文本内容（如翻译、解析等）。
-2. sandbox返回处理后的文本内容（batch）。
+1. sandbox 接收请求，处理文本内容（如翻译、解析等）。
+2. sandbox 返回处理后的文本内容（batch）。
 
-#### example
+**example**
 
 - request
 
@@ -112,13 +116,13 @@
   1. 多轮对话结束后收尾，sandbox可在这里执行“清理资源”“停止容器”“合并最终日志”等。
   2. 返回 JSON 的内容不参与后续对话，但可记录到日志。
 
-#### 对应源码
+**对应源码**
 
 `verl.utils.swedev_utils.py call_postprocess_api()`
 
 ![image-20250325195712909](assets/code_call_postprocess_api.png)
 
-### /compute_reward
+## `/compute_reward`
 
 - URL: `http://http://60.165.239.98:5000/compute_reward`
 - 方法: `POST`
@@ -132,7 +136,7 @@
 - 功能
   1. 根据前面 `/process_action` 的累计结果，执行自动化测试或其他判断，然后得出 reward 分数。
 
-#### example
+**example**
 
 - request
 
@@ -152,7 +156,7 @@
 }
 ```
 
-#### 对应源码
+**对应源码**
 
 `verl.workers.reward_manager.swedev.py SWEDevRewardManager.fetch_reward()`
 
