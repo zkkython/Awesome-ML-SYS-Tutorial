@@ -27,7 +27,7 @@ echo $WANDB_API_KEY
 以后每次从 docker 里面 exit 出来，再用这个指令可以重启：
 
 ```bash
-docker start -i h100_{your_name}
+docker start -i h100_verl_{your_name}
 ```
 
 ### 基于源码安装 SGLang
