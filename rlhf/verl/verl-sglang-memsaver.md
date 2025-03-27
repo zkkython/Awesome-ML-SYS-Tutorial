@@ -1,4 +1,16 @@
-# VeRL-SGLang-memsaver-multinodes Installation and Testing Guide
+# VeRL-SGLang-memsaver Installation and Testing Guide
+## 背景
+SGLang进入训练框架之后，需要保持`enable_memory_saver=True`开启以便在rollout结束后释放显存给别的模块使用
+
+## verl 完整的memory saver PR需要
+- [x] memory saver找不到头文件安装失败 https://github.com/fzyzcjy/torch_memory_saver/pull/2
+- [x] 跨进程传tensor错误 https://github.com/sgl-project/sglang/pull/4565
+- [ ] 更新verl-sglang镜像
+- [x] 在verl engine中默认开启memory saver
+- [ ] 更新verl对sglang rollout的依赖
+
+verl的相关pr，持续更新中：
+- https://github.com/volcengine/verl/pull/756
 
 ## 环境配置
 
@@ -17,26 +29,14 @@ python3 -m pip install --upgrade uv
 
 ```bash
 # 克隆 veRL 代码库
-git clone https://github.com/volcengine/verl.git
+git clone https://github.com/SwordFaith/verl.git
 cd verl
 
-# 安装 veRL 而不安装依赖
-python3 -m uv pip install --no-deps .
+# 安装 veRL 的SGLang依赖
+python3 -m uv pip install -r requirements_sglang.txt
 
-# 安装 vllm 特定版本（SGLang 需要的版本）
-python3 -m uv pip install "vllm>=0.6.4.post1,<=0.7.2"
-
-# 安装其他必要依赖
-python3 -m uv pip install tensordict
-python3 -m uv pip install torch-memory-saver
-python3 -m uv pip install flash-attn --no-build-isolation
-```
-
-### 安装指定版本的 SGLang
-
-```bash
-# 安装指定分支的 SGLang
-python3 -m uv pip install "sglang[all] @ git+https://github.com/fzyzcjy/sglang.git@feat/patch_torch#egg=sglang&subdirectory=python" --find-links https://flashinfer.ai/whl/cu124/torch2.5/flashinfer-python
+# 安装最新的SGLang主分支
+python3 -m uv pip install "sglang[all] @ git+https://github.com/sgl-project/sglang.git@main#egg=sglang&subdirectory=python" --find-links https://flashinfer.ai/whl/cu124/torch2.5/flashinfer-python
 ```
 
 ### 创建数据集
@@ -127,4 +127,26 @@ find / -name verl_demo.log 2>/dev/null
 ## 常见问题
 
 现在会稳定报错:
-![Memsaver Error](memsaver_error.jpeg)
+
+```shell
+ray.exceptions.RayTaskError(RuntimeError): ray::WorkerDict.actor_rollout_generate_sequences() (pid=42249, ip=100.106.32.178, actor_id=a6552c4ca07c0202f4b6705701000000, repr=<verl.single_controller.ray.base.WorkerDict object at 0x7f77f43bca30>)
+  File "/data/gpu-use/sw-verl/verl/single_controller/ray/base.py", line 419, in func
+    return getattr(self.worker_dict[key], name)(*args, **kwargs)
+  File "/data/gpu-use/sw-verl/verl/single_controller/base/decorator.py", line 404, in inner
+    return func(*args, **kwargs)
+  File "/data/gpu-use/sw-verl/verl/workers/fsdp_workers.py", line 500, in generate_sequences
+    with self.rollout_sharding_manager:
+  File "/data/gpu-use/sw-verl/verl/workers/sharding_manager/fsdp_sglang.py", line 91, in __enter__
+    self.inference_engine.update_weights_from_tensor([(k, v) for k, v in params.items()], load_format=None)
+  File "/data/gpu-use/sw-verl/.venv/lib/python3.10/site-packages/sglang/srt/entrypoints/verl_engine.py", line 112, in update_weights_from_tensor
+    dist.gather_object(
+  File "/data/gpu-use/sw-verl/.venv/lib/python3.10/site-packages/torch/distributed/c10d_logger.py", line 83, in wrapper
+    return func(*args, **kwargs)
+  File "/data/gpu-use/sw-verl/.venv/lib/python3.10/site-packages/torch/distributed/distributed_c10d.py", line 2825, in gather_object
+    all_gather(object_size_list, local_size, group=group)
+  File "/data/gpu-use/sw-verl/.venv/lib/python3.10/site-packages/torch/distributed/c10d_logger.py", line 83, in wrapper
+    return func(*args, **kwargs)
+  File "/data/gpu-use/sw-verl/.venv/lib/python3.10/site-packages/torch/distributed/distributed_c10d.py", line 3346, in all_gather
+    work.wait()
+RuntimeError: [../third_party/gloo/gloo/transport/tcp/pair.cc:534] Connection closed by peer [100.106.32.178]:22676
+```
