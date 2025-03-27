@@ -17,26 +17,11 @@ python3 -m pip install --upgrade uv
 
 ```bash
 # 克隆 veRL 代码库
-git clone https://github.com/volcengine/verl.git
+git clone https://github.com/SwordFaith/verl.git
 cd verl
 
-# 安装 veRL 而不安装依赖
-python3 -m uv pip install --no-deps .
-
-# 安装 vllm 特定版本（SGLang 需要的版本）
-python3 -m uv pip install "vllm>=0.6.4.post1,<=0.7.2"
-
-# 安装其他必要依赖
-python3 -m uv pip install tensordict
-python3 -m uv pip install torch-memory-saver
-python3 -m uv pip install flash-attn --no-build-isolation
-```
-
-### 安装指定版本的 SGLang
-
-```bash
-# 安装指定分支的 SGLang
-python3 -m uv pip install "sglang[all] @ git+https://github.com/fzyzcjy/sglang.git@feat/patch_torch#egg=sglang&subdirectory=python" --find-links https://flashinfer.ai/whl/cu124/torch2.5/flashinfer-python
+# 安装 veRL 的SGLang依赖
+python3 -m uv pip install -r requirements_sglang.txt
 ```
 
 ### 创建数据集
