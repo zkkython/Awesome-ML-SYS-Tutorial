@@ -1,4 +1,4 @@
-# VeRL-multiturn-SandboxFusion-Tutorial
+# VeRL-multiturn-SandboxFusion
 
 # Get Started
 
@@ -13,11 +13,11 @@ The code sandbox service primarily offers two functions:
 
 Supported programming languages:
 
-![Screenshot 2025-03-25 at 7.04.54 PM.png](sandbox_supported_languages.png)
+![Screenshot 2025-03-25 at 7.04.54 PM.png](./img/sandbox_supported_languages.png)
 
 Implemented open-source datasets:
 
-![Screenshot 2025-03-25 at 7.05.28 PM.png](sandbox_supported_datasets.png)
+![Screenshot 2025-03-25 at 7.05.28 PM.png](./img/sandbox_supported_datasets.png)
 
 # Local Deployment
 
