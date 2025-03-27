@@ -126,7 +126,7 @@ find / -name verl_demo.log 2>/dev/null
 
 ## 常见问题
 
-现在会稳定报错:
+Q: 如下报错，成因是某个rank崩溃导致进程关闭
 
 ```shell
 ray.exceptions.RayTaskError(RuntimeError): ray::WorkerDict.actor_rollout_generate_sequences() (pid=42249, ip=100.106.32.178, actor_id=a6552c4ca07c0202f4b6705701000000, repr=<verl.single_controller.ray.base.WorkerDict object at 0x7f77f43bca30>)
@@ -150,3 +150,6 @@ ray.exceptions.RayTaskError(RuntimeError): ray::WorkerDict.actor_rollout_generat
     work.wait()
 RuntimeError: [../third_party/gloo/gloo/transport/tcp/pair.cc:534] Connection closed by peer [100.106.32.178]:22676
 ```
+A: 确认是否安装了最新的SGLang main branch。特别需要注意在开启memory saver后，可以在`sglang/srt/entrypoints/verl_engine::VerlEngine`里找到`monkey_patch_torch_reductions`
+<img width="628" alt="Screenshot 2025-03-28 at 1 32 31 AM" src="https://github.com/user-attachments/assets/61f0b74b-6362-491f-8063-908a90fd5808" />
+
