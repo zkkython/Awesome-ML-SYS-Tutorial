@@ -150,6 +150,8 @@ ray.exceptions.RayTaskError(RuntimeError): ray::WorkerDict.actor_rollout_generat
     work.wait()
 RuntimeError: [../third_party/gloo/gloo/transport/tcp/pair.cc:534] Connection closed by peer [100.106.32.178]:22676
 ```
-A: 确认是否安装了最新的SGLang main branch。特别需要注意在开启memory saver后，可以在`sglang/srt/entrypoints/verl_engine::VerlEngine`里找到`monkey_patch_torch_reductions`
+A: 确认是否安装了最新的SGLang main branch。特别需要注意要在安装的SGlang的`sglang/srt/entrypoints/verl_engine::VerlEngine`里找到`monkey_patch_torch_reductions`
+
+
 <img width="628" alt="Screenshot 2025-03-28 at 1 32 31 AM" src="https://github.com/user-attachments/assets/61f0b74b-6362-491f-8063-908a90fd5808" />
 
