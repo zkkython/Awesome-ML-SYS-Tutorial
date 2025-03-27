@@ -178,6 +178,6 @@ In the `.devcontainer` create a `devcontainer.json` like so:
 ```
 Make sure to point with the path to the docker file you want to use.
 You can than use 
-`ctrl + shift + p` and type `Devcontainers: Open Folder in Container` and select the folder where you created the subfolder `.devcontainer`. You will be able to use all the features of VSCode while not having to bother with environmental issues.
+`ctrl + shift + p` and type `Devcontainers: Open Folder in Container` and select the folder where you created the subfolder `.devcontainer`. You will be able to use all the features of VSCode while developing inside the container..
 
 For more details see [here](https://code.visualstudio.com/docs/devcontainers/containers).
