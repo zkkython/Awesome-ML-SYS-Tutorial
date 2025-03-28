@@ -1,31 +1,42 @@
+# veRL Server：基于 HTTP Server 的 rollout 接口
 
+【disclaim】这篇文章是 yitianlian 参与 SGLang RL 的工作成果，全程有 jhinpan 和 fzyzcjy 的合作，最后 zhaochenyang20 完成了 review，感谢每位参与者的贡献。
 
-在强化学习训练中，我们希望能支持基于 HTTP Server 的 rollout 接口，以便在训练阶段调用 SGLang 生成模块（VerlEngine）。因此，我尝试将 `VerlEngine` 与 SGLang 的 Server 进行集成，使其在训练过程中能够通过 HTTP 请求调用模型，而不是通过直接函数调用。
+为了配合 agentic LLM 的训练，在现有的 PPO/GRPO 算法的基础上，从 single turn rollout 改动为和环境交互的 multi-turn rollout 是非常自然的选择。考虑到这一过程中，由于 enviroment 交互的延迟，turn 之间的等待时间很长，一直用 Engine 做 rollout 的话（`engine.generate`），可能连 continuous batching 都组不起来，所以，改用 server 来通过 https 做 rollout 的需求就呼之欲出了。除此之外，考虑到 enviroment 的交互也常常是通过 https 请求完成的，比如众多 sandbox，就是 enviroment 自己启动一个 sandbox 然后往里面发请求实现的。为了在 training engine，rollout 和 enviroment 三个子进程中保持良好的通讯和交互，避免通过同意，选择 server 势在必行。
 
-为实现这一目标，我将 SGLang 的 `launch_server` 函数改写为 `launch_server_from_verl_engine`，允许我们在已有 `VerlEngine` 初始化的基础上，复用其 `TokenizerManager` 和 `SchedulerInfo`，从而避免重复创建通信管道或资源冲突。
+为实现这一目标，我们将 SGLang 的 `launch_server` 函数改写为 `launch_server_from_verl_engine`，允许我们在已有 `VerlEngine` 初始化的基础上，复用其 `TokenizerManager` 和 `SchedulerInfo`，从而避免重复创建通信管道或资源冲突。【这里能解释下什么是通信管道浪费和资源冲突么？可能和 tom 老师之前的神之一笔有关？分享失败经验是非常重要的😂】
 
-## 运行流程
+## 测试流程
+
+启动新的虚拟环境，这里我们不用 docker，但是还是使用 uv。
 
 ```bash
+cd ~
+
+python3 -m venv ~/.python/veRL-server
+source ~/.python/veRL-server/bin/activate
+python3 -m pip install uv
+
+# 安装 sglang
+
 git clone https://github.com/yitianlian/sglang-fork.git
 cd sglang-fork
-git checkout feature/verlengine_server
-# If use conda
-conda create sglang-verl-server python=3.11
-conda activate sglang-verl-server
-pip install --upgrade pip
-pip install -e "python[all]" --find-links https://flashinfer.ai/whl/cu124/torch2.5/flashinfer-python
+git checkout feature/http_server_engine
+python3 -m uv pip install -e "python[all]" --find-links https://flashinfer.ai/whl/cu124/torch2.5/flashinfer-python
+
+# 测试 veRL Server
 
 cd test/srt
 python test_verl_engine_server.py
 ```
 
+【在 atlas H100 和 novita H20 上全是 broken pipe，但是 SGLang CI 可以过，很奇怪？】
 
-## 具体修改内容
+## 开发思路
 
-### 1. 增加 `launch_server_from_verl_engine`
+### 增加 `launch_server_from_verl_engine`
 
-该函数与原始的 `launch_server` 类似，但允许外部传入已有的 `tokenizer_manager` 和 `scheduler_info`，并从 `VerlEngine` 内部启动 HTTP Server。
+该函数与 [`launch_server`](https://github.com/sgl-project/sglang/blob/ef9a378a209d970e0b5c48ae3eac6f2660d43faf/python/sglang/srt/entrypoints/http_server.py#L659) 类似，但允许外部传入已有的 `tokenizer_manager` 和 `scheduler_info`，并从 `VerlEngine` 内部启动 HTTP Server。【这么设计的意义是什么，为什么要外部传入？不这么设计的坏处是什么？】
 
 ```python
 def launch_server_from_verl_engine(
@@ -85,7 +96,7 @@ def launch_server_from_verl_engine(
 
 ```
 
-### 2. 修改 `VerlEngine.__init__`
+### 修改 `VerlEngine.__init__`
 
 我在 `tp_rank == 0` 的进程中，启动了一个新的线程来运行 `launch_server_from_verl_engine`，从而不阻塞主线程的初始化逻辑：
 
