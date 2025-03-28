@@ -1,4 +1,4 @@
-# Qwen2.5VL GRPO using Sglang
+# Qwen2.5VL GRPO with SGLang
 
 ## 环境配置
 
@@ -137,3 +137,5 @@ python3 -m verl.trainer.main_ppo \
 # 注意，跑的是 qwen 2.5 的，不是 qwen2 的，别把文件弄混了
 bash examples/grpo_trainer/run_qwen2_5_vl-7b.sh sglang
 ```
+
+目前的情况是，整个流程可以跑通了，现在 val 的结果很低，应该是 verl 的 evalute 直接接错了，要对着 sglang 在没有训练之前拉通 evaluate 结果。
