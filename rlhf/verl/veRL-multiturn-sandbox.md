@@ -73,7 +73,7 @@ async def swedev_start(index):
 - URL: `http://60.165.239.98:5000/process_action`
 - 方法: `POST`
 - 请求参数
-  - <string> `sid` 
+  - <string> `sid`
   - <string> `content` prompt
 - 返回参数
   - <string> `content` response
@@ -118,7 +118,7 @@ async def call_observation_api(sid, text: str):
                 return await response.json()
     except Exception as e:
         print(f"Observation - API call failed: {e}")
-        return None  
+        return None
 ```
 
 ```python
@@ -168,10 +168,10 @@ async def swe_dev_obs(action_ids, sid, tokenizer, **kwargs):
 ```
 
 - 功能
-  1. 多轮对话结束后收尾，sandbox可在这里执行“清理资源”“停止容器”“合并最终日志”等。
+  1. 多轮对话结束后收尾，sandbox可在这里执行"清理资源""停止容器""合并最终日志"等。
   2. 返回 JSON 的内容不参与后续对话，但可记录到日志。
 
-**对应源码** 
+**对应源码**
 
 ```python
 # verl.utils.swedev_utils.py
@@ -250,7 +250,7 @@ async def fetch_reward(self, sid: torch.Tensor, session: aiohttp.ClientSession) 
 ```
 
 ```python
-# verl.utils.swedev_utils.py 
+# verl.utils.swedev_utils.py
 def calc_reward(reward_json):
     # patch_is_None
     # patch_exists
@@ -260,7 +260,7 @@ def calc_reward(reward_json):
     # f2p_total
     # p2p_count
     # p2p_total
-    
+
     if 'reward' in reward_json:
         return reward_json['reward']
     else:
@@ -271,7 +271,7 @@ def calc_reward(reward_json):
 ```
 
 ```python
-# verl.utils.swedev_utils.py 
+# verl.utils.swedev_utils.py
 def get_api(type):
     base_url = random.sample([
         "http://60.165.239.98:5000",
@@ -310,4 +310,184 @@ train.py
                           └── asyncio.run(fetch_reward())
                                 └── POST /compute_reward
 ```
+
+# SandboxFusion 集成方案
+
+veRL-multiturn 可以使用 SandboxFusion 作为更强大的代码沙箱引擎，提供更广泛的语言支持和评估能力。以下是 SandboxFusion 的详细说明及其与 veRL 集成的方案。
+
+## SandboxFusion 简介
+
+SandboxFusion 是一个用于**代码执行**和**评估**的多功能平台，支持超过 20 种编程语言和 10 多个代码相关的评估数据集。为云部署而设计，它提供两个主要功能：运行代码和评估解决方案的正确性。该平台支持*脚本*和*Jupyter*两种执行模式，可通过*YAML文件*设置自定义安全隔离级别。每次执行时，它会创建一个临时目录，执行后自动删除，并使用 base64 编码处理文件传输。
+
+主要功能：
+- **运行代码**
+- **评估问题的正确性**
+
+### 支持的编程语言
+
+![支持的编程语言](./img/sandbox_supported_languages.png)
+
+### 实现的开源数据集
+
+![支持的数据集](./img/sandbox_supported_datasets.png)
+
+## 本地部署
+
+```bash
+docker run -it -p 8080:8080 volcengine/sandbox-fusion:server-20241204
+```
+
+## 使用方法
+
+### 代码沙箱
+
+> 💡 提示：
+> 简单的演示页面：[http://localhost:8080/SandboxFusion/playground/sandbox](http://localhost:8080/SandboxFusion/playground/sandbox)
+
+执行以下命令请求沙箱运行 Python 代码片段：
+
+```bash
+curl 'http://localhost:8080/run_code' \
+  -H 'Content-Type: application/json' \
+  --data-raw '{"code": "print(\"Hello, world!\")", "language": "python"}'
+```
+
+示例输出：
+
+```json
+{
+  "status": "Success",
+  "message": "",
+  "compile_result": null,
+  "run_result": {
+    "status": "Finished",
+    "execution_time": 0.016735315322875977,
+    "return_code": 0,
+    "stdout": "Hello, world!\\n",
+    "stderr": ""
+  },
+  "executor_pod_name": null,
+  "files": {}
+}
+```
+
+也可以使用 Python 脚本发送类似请求。下面是运行 C++ 代码的示例：
+
+```python
+import requests
+import json
+
+response = requests.post('http://localhost:8080/run_code', json={
+    'code': '''
+#include <iostream>
+
+int main() {
+    std::cout << "Hello, world!" << std::endl;
+    return 0;
+}
+''',
+    'language': 'cpp',
+})
+
+print(json.dumps(response.json(), indent=2))
+```
+
+### 数据集
+
+> 💡 提示：
+> 简单的演示页面：[http://localhost:8080/SandboxFusion/playground/datasets](http://localhost:8080/SandboxFusion/playground/datasets)
+
+SandboxFusion 集成了多种数据集类型，包括 HumanEval、AutoEval 和 CommonOJ，每种类型都有自己的数据格式和评估方法。用户通过 Python SDK 与这些数据集交互，使用 `run_code`、`get_prompts` 和 `submit` 等函数执行代码和评估。SDK 支持并发请求，允许通过环境变量或函数配置 API 端点。
+
+获取 MBPP 所有问题的提示：
+
+```bash
+curl 'http://localhost:8080/get_prompts' \
+  -H 'Content-Type: application/json' \
+  --data-raw '{"dataset":"mbpp","config":{}}'
+```
+
+提交模型输出以获取问题的**正确性结果**：
+
+```bash
+curl 'http://localhost:8080/submit' \
+  -H 'Content-Type: application/json' \
+  --data-raw '{"dataset":"mbpp","id":"11","completion":"Here is a Python function that removes the first and last occurrence of a given character from a string:\n\n```python\ndef remove_Occ(s, char):\n    first_occ = s.find(char)\n    last_occ = s.rfind(char)\n    \n    if first_occ == -1 or first_occ == last_occ:\n        return s\n    \n    # Remove the first occurrence\n    s = s[:first_occ] + s[first_occ + 1:]\n    \n    # Adjust the index for the last occurrence since the string is now one character shorter\n    last_occ -= 1\n    \n    # Remove the last occurrence\n    s = s[:last_occ] + s[last_occ + 1:]\n    \n    return s\n\n# Test the function\nassert remove_Occ(\"hello\", \"l\") == \"heo\"\n```\n\nThis function works as follows:\n1. It finds the index of the first occurrence of the given character.\n2. It finds the index of the last occurrence of the given character.\n3. If the character does not exist in the string or only occurs once, it simply returns the original string.\n4. Otherwise, it constructs a new string by removing the first occurrence and then adjusts the index for the last occurrence before removing it.\n\nYou can run the provided test to ensure the function works as expected.","config":{}}'
+```
+
+## SandboxFusion API 使用
+
+### 数据集管理
+
+- **列出数据集**：`/list_datasets` - 列出所有已注册数据集。
+- **列出 ID**：`/list_ids` - 列出指定数据集内的所有 ID。
+- **按 ID 获取提示**：`/get_prompt_by_id` - 使用 ID 和数据集信息检索单个提示。
+- **获取提示**：`/get_prompts` - 检索数据集中的所有提示。
+
+### 代码执行
+
+- **运行代码**：`/run_code` - 执行单个代码块。参数：语言、超时设置、输入/输出文件。
+- **运行 Jupyter**：`/run_jupyter` - 在 Jupyter notebook 环境中执行多个代码单元。
+
+### 评估
+
+- **提交**：`/submit` - 在数据集内提交单个问题的解决方案，接收其正确性和执行详情的反馈。
+- **获取指标**：`/get_metrics` - 检索数据集的聚合指标。
+- **获取指标函数**：`/get_metrics_function` - 提供用于生成指标的函数。
+
+### Python SDK 使用
+
+安装：
+
+```bash
+pip install sandbox-fusion
+```
+
+配置 API 端点：
+
+```python
+from sandbox_fusion import set_endpoint
+set_endpoint("http://your-api-endpoint.com")
+```
+
+运行代码示例：
+
+```python
+from sandbox_fusion import run_code, RunCodeRequest
+run_code(RunCodeRequest(code='print(123)', language='python'))
+```
+
+提交示例：
+
+```python
+from sandbox_fusion import submit, SubmitRequest
+submit(SubmitRequest(...))
+```
+
+并发请求示例：
+
+```python
+from sandbox_fusion import run_concurrent, run_code, RunCodeRequest
+codes = [f'print({i})' for i in range(123, 456)]
+results = run_concurrent(run_code, args=[[RunCodeRequest(code=c, language='python')] for c in codes])
+```
+
+## veRL 与 SandboxFusion 集成方案
+
+将 veRL-multiturn 与 SandboxFusion 集成，可以构建一个适配器层，将 veRL 的 API 映射到 SandboxFusion 的 API：
+
+1. `/start_instance` → 创建临时上下文，存储 `instance_hash` 和相关信息
+2. `/process_action` → 调用 SandboxFusion 的 `/run_code` 或 `/submit`，根据内容类型和任务要求
+3. `/postprocess` → 清理临时资源
+4. `/compute_reward` → 根据代码执行结果和测试通过情况计算奖励
+
+这种集成可以利用 SandboxFusion 的强大功能，同时保持与现有 veRL 系统的兼容性。
+
+## 常见问题
+
+**Q：为什么不采用创建Session+每个请求执行一个Cell的方式，而是要每次执行全部Cell？**
+
+**A：**为了维持沙盒服务的无状态特性，降低维护和使用成本。沙盒服务于离线场景，吞吐的重要性大于延迟。
+
+**潜在改进：**设计一个online sandbox来服务Server-based Multi-turn rollout
 
