@@ -16,7 +16,7 @@ conda activate sglang-verl-server
 pip install --upgrade pip
 pip install -e "python[all]" --find-links https://flashinfer.ai/whl/cu124/torch2.5/flashinfer-python
 
-cd python
+cd test/srt
 python test_verl_engine_server.py
 ```
 
@@ -162,4 +162,53 @@ class VerlEngine:
 
 - Server 启动后，FastAPI 或 Uvicorn 可能创建了新的事件循环或通信通道，影响了 `TokenizerManager` 原有的 IPC 通道。
 - `TokenizerManager` 虽然仍在运行，但其内部 ZMQ socket 的消息接收能力可能受到了主线程资源或 GIL 的竞争影响。
+
+在经历了多线程的问题之后，我们换了一种新的解决方法：
+
+# 全新设计
+
+在这个设计中，存在一个多层委托的调用链：
+
+1. **调用链分析**:
+   - test_verl_engine_server.py中调用`engine.update_weights_from_tensor()`
+   - 这个engine实际上是VerlEngine的实例
+   - VerlEngine内部在初始化时创建了HttpServerEngineAdapter作为其`_engine`属性
+   - 当调用VerlEngine的update_weights_from_tensor时，它内部会调用`self._engine.update_weights_from_tensor()`
+
+2. **关键代码连接点**:
+   在verl_engine.py中，VerlEngine的初始化有这样一段代码：
+   ```python
+   if "launch_server" in kwargs and kwargs["launch_server"]:
+       # 构建server_args...
+       if self._tp_rank == 0:
+           self._engine = HttpServerEngineAdapter(server_args)
+   ```
+
+   而在test_verl_engine_server.py中启动VerlEngine时有：
+   ```python
+   engine = VerlEngine(
+       # 其他参数...
+       launch_server=True
+   )
+   ```
+
+3. **HTTP服务器的启动和通信**:
+   - 当传入`launch_server=True`时，VerlEngine会创建一个HttpServerEngineAdapter
+   - HttpServerEngineAdapter会启动一个HTTP服务器进程
+   - VerlEngine的update_weights_from_tensor方法会收集所有节点的张量数据
+   - 在主节点(tp_rank=0)上，它通过HttpServerEngineAdapter发送HTTP请求来更新权重
+
+4. **分布式协作机制**:
+   ```python
+   # VerlEngine中的update_weights_from_tensor
+   if self._tp_rank == 0:  # 只有主节点发送HTTP请求
+       self._engine.update_weights_from_tensor(
+           named_tensors=[(name, LocalSerializedTensor(values=gathered_serialized_tensors))],
+           # 其他参数...
+       )
+   ```
+
+这样的设计实现了一个完整的客户端-服务器架构：
+- 服务器端是HttpServerEngineAdapter启动的HTTP服务器进程
+- 客户端是VerlEngine通过HttpServerEngineAdapter发送的HTTP请求
 
