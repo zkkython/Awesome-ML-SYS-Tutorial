@@ -146,9 +146,9 @@ async def swe_dev_obs(action_ids, sid, tokenizer, **kwargs):
   - <string> `sid` session id
 - 返回参数
   - 自定义
-
-1. sandbox 接收请求，处理文本内容（如翻译、解析等）。
-2. sandbox 返回处理后的文本内容（batch）。
+- 功能
+  1. 多轮对话结束后收尾，sandbox可在这里执行"清理资源""停止容器""合并最终日志"等。
+  2. 返回 JSON 的内容不参与后续对话，但可记录到日志。
 
 **example**
 
@@ -166,10 +166,6 @@ async def swe_dev_obs(action_ids, sid, tokenizer, **kwargs):
 {
 }
 ```
-
-- 功能
-  1. 多轮对话结束后收尾，sandbox可在这里执行"清理资源""停止容器""合并最终日志"等。
-  2. 返回 JSON 的内容不参与后续对话，但可记录到日志。
 
 **对应源码**
 
@@ -490,4 +486,52 @@ results = run_concurrent(run_code, args=[[RunCodeRequest(code=c, language='pytho
 **A：**为了维持沙盒服务的无状态特性，降低维护和使用成本。沙盒服务于离线场景，吞吐的重要性大于延迟。
 
 **潜在改进：**设计一个online sandbox来服务Server-based Multi-turn rollout
+
+# R1-Searcher for veRL Multiturn Rollout
+
+基于尽快搭建 sandbox 看到 multiturn veRL 训练效果的需求，整理了一下当前 veRL 源码中的改动点和需要考虑的问题。
+
+## Current Implementation in veRL
+
+1. 现在的 verl 里 hotpotqa 任务用的是 NaiveRewardManager，分数是本地计算的并且没有真正实现，且 hotpotqa.py 里算分按的是gsm8k的格式（这个问题同步一下 R1-Searcher/train/reward_server_qwen_zero.py 里的格式改改prompt就行）。
+2. http 请求对应的类是 SWEDevRewardManager （应该改名叫 HTTPRewardManager），swedev 任务的 reward 计算比较复杂才用到的sandbox，所以这个类封装了请求。
+
+## 现在的调用关系
+
+```
+main_ppo.py
+  └── main() / run_ppo()
+        └── main_task()
+              ├── reward_fn = NaiveRewardManager (...)
+              │		└── self.compute_score = _default_compute_score
+              │           └── elif data_source in ['hotpotqa', 'hotpotQA']:
+              │                 └── hotpotqa.compute_score(...extractor_urls=[], checker_urls=[]...)
+```
+
+## 需求
+
+`main_ppo.py` 147行加一个分支，`HTTPRewardManager ` 直接复制 `SWEDevRewardManager`  的实现
+
+```python
+    if reward_manager_name == 'naive':
+        from verl.workers.reward_manager import NaiveRewardManager
+        reward_manager_cls = NaiveRewardManager
+    elif reward_manager_name == 'prime':
+        from verl.workers.reward_manager import PrimeRewardManager
+        reward_manager_cls = PrimeRewardManager
+    elif reward_manager_name == "swedev":
+        from verl.workers.reward_manager import SWEDevRewardManager
+        reward_manager_cls = SWEDevRewardManager
+############################## NEW ##############################
+    elif reward_manager_name == "http":
+        from verl.workers.reward_manager import HTTPRewardManager
+        reward_manager_cls = HTTPRewardManager
+############################## NEW ##############################
+    else:
+        raise NotImplementedError
+```
+
+## 需要讨论的问题
+
+1. process_action 和 postprocessing 具体做什么。我理解是 process_action 接收模型当下的回答然后给出反馈；postprocessing 在swedev 里是清除资源（关闭docker），之前的结果都写在文件里，所以最后计算 reward 的时候直接去读文件（personally agree，不知道有没有别的想法）。
 
