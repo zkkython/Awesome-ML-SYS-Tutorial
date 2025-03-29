@@ -237,3 +237,18 @@ class VerlEngine:
 - 服务器端是HttpServerEngineAdapter启动的HTTP服务器进程
 - 客户端是VerlEngine通过HttpServerEngineAdapter发送的HTTP请求
 
+
+### 为什么我们不采用 `update_weights_from_distributed` 来更新 Server 参数
+
+尽管 NCCL 通信在多数场景下具备极高的性能，我们在本版本的实现中依然选择不使用 `update_weights_from_distributed`，而是通过 `update_weights_from_tensor` 接口来完成 Server 参数的更新。主要原因如下：
+
+1. **兼容 VerlEngine 现有逻辑**  
+   为了与当前 VerlEngine 的实现保持完全兼容，我们需采用 `update_weights_from_tensor` 接口进行参数更新。这一方式可以无缝对接现有的框架，避免对主逻辑产生不必要的干扰。
+
+2. **HTTP 传输性能无需担忧**  
+   起初我们担心通过 HTTP 传输 tensor 会成为性能瓶颈。但据与 fzyzcjy 的沟通确认，`update_weights_from_tensor` 实际上传输的仅为 meta data，而非完整 tensor 数据。因此，该方式在性能上也能满足需求，传输效率并不构成实际障碍。
+
+3. **`update_weights_from_distributed` 与 Verl 框架存在设计冲突**  
+   当前 `update_weights_from_distributed` 的实现逻辑是：在 rank 0 上保存模型参数，并通过 TCP 将参数广播至其他 ranks（如 rank 1、rank 2）。然而，在 Verl 框架中，HybridEngine 会将 training 与 inference 部署在同一资源池上。这就导致同一个 rank 的同一个端口需同时承担发送与接收任务，进而产生端口冲突。因此，该方法与 VerlEngine 的资源调度方式不兼容，无法直接采用。
+
+综上，`update_weights_from_tensor` 在兼容性、性能和设计合理性方面均更符合当前实现的需求，因此我们选择了这一方案。
