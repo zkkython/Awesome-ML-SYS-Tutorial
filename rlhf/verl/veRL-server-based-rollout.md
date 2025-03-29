@@ -16,7 +16,6 @@
 
 ```bash
 cd ~
-
 python3 -m venv ~/.python/veRL-server
 source ~/.python/veRL-server/bin/activate
 python3 -m pip install uv
@@ -25,14 +24,18 @@ python3 -m pip install uv
 git clone https://github.com/yitianlian/sglang-fork.git
 cd sglang-fork
 git checkout feature/http_server_engine
-python3 -m uv pip install -e "python[all]" --find-links https://flashinfer.ai/whl/cu124/torch2.5/flashinfer-python
+
+# 重要：安装修改后的包
+cd python
+pip install .
+pip install torch_memory_saver
 
 # 测试 veRL Server
-cd test/srt
+cd ../test/srt
 python test_verl_engine_server.py
 ```
 
-现在有一个比较严重的是在Atlas H100或者说Novita H20上会报 `BrokenPipeError: [Errno32] Broken Pipe` 这个报错，合理怀疑是因为Atlas H100 和 Novita H20 服务器可能对 30000+ 端口范围有特殊限制。代码中使用了 `new_server_args.port = 30000 + self._tp_rank` 来分配端口.
+我们之前遇到的 `BrokenPipeError: [Errno32] Broken Pipe` 错误已经找到根本原因。这个问题不是由端口冲突或服务器限制引起的，而是由于我们修改了SGLang的verl_Engine.py和http_server.py文件后，没有重新安装更新后的包所导致的。
 
 ## 开发思路
 
@@ -174,18 +177,18 @@ class VerlEngine:
 我们推测多线程设计方案存在严重问题，导致无法可靠使用：
 
 1. 线程安全问题：
-    - TokenizerManager可能不是线程安全的，当同时被多个线程访问时会导致竞争条件.
+    - TokenizerManager可能不是线程安全的，当同时被多个线程访问时会导致竞争条件。
 
 2. IPC通道干扰：
-    - Server线程(FastAPI/Uvicorn)创建的事件循环与主线程的ZMQ通信通道产生相互干扰
-    - 这会导致pipe的一端被意外关闭，正如上文提到的 `BrokenPipeError: [Errno32] Broken Pipe` 这个报错.
+    - Server线程(FastAPI/Uvicorn)创建的事件循环与主线程的ZMQ通信通道产生相互干扰。
+    - 这会导致pipe的一端被意外关闭，正如上文提到的 `BrokenPipeError: [Errno32] Broken Pipe` 这个报错。
 
 3. GIL限制下的阻塞：
     - Python的GIL(全局解释器锁)在处理I/O密集型任务时，线程切换不及时。
     - 当Server线程长时间占用GIL，会导致TokenizerManager无法及时响应ZMQ消息。
 
 4. 资源分配冲突：
-    - 两个线程同时操作网络资源导致端口竞争，这可能与Atlas/Novita服务器上出现的broken pipe错误有关
+    - 两个线程同时操作网络资源导致端口竞争，这可能与Atlas/Novita服务器上出现的broken pipe错误有关。
 
 ## 设计思路二 (现在采用版本)
 
