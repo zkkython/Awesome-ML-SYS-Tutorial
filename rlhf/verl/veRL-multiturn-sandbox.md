@@ -146,9 +146,9 @@ async def swe_dev_obs(action_ids, sid, tokenizer, **kwargs):
   - <string> `sid` session id
 - 返回参数
   - 自定义
-
-1. sandbox 接收请求，处理文本内容（如翻译、解析等）。
-2. sandbox 返回处理后的文本内容（batch）。
+- 功能
+  1. 多轮对话结束后收尾，sandbox可在这里执行"清理资源""停止容器""合并最终日志"等。
+  2. 返回 JSON 的内容不参与后续对话，但可记录到日志。
 
 **example**
 
@@ -166,10 +166,6 @@ async def swe_dev_obs(action_ids, sid, tokenizer, **kwargs):
 {
 }
 ```
-
-- 功能
-  1. 多轮对话结束后收尾，sandbox可在这里执行"清理资源""停止容器""合并最终日志"等。
-  2. 返回 JSON 的内容不参与后续对话，但可记录到日志。
 
 **对应源码**
 
