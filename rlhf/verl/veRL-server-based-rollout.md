@@ -4,7 +4,11 @@
 
 为了配合 agentic LLM 的训练，在现有的 PPO/GRPO 算法的基础上，从 single turn rollout 改动为和环境交互的 multi-turn rollout 是非常自然的选择。考虑到这一过程中，由于 enviroment 交互的延迟，turn 之间的等待时间很长，一直用 Engine 做 rollout 的话（`engine.generate`），可能连 continuous batching 都组不起来，所以，改用 server 来通过 https 做 rollout 的需求就呼之欲出了。除此之外，考虑到 enviroment 的交互也常常是通过 https 请求完成的，比如众多 sandbox，就是 enviroment 自己启动一个 sandbox 然后往里面发请求实现的。为了在 training engine，rollout 和 enviroment 三个子进程中保持良好的通讯和交互，避免通过同意，选择 server 势在必行。
 
-为实现这一目标，我们将 SGLang 的 `launch_server` 函数改写为 `launch_server_from_verl_engine`，允许我们在已有 `VerlEngine` 初始化的基础上，复用其 `TokenizerManager` 和 `SchedulerInfo`，从而避免重复创建通信管道或资源冲突。【这里能解释下什么是通信管道浪费和资源冲突么？可能和 tom 老师之前的神之一笔有关？分享失败经验是非常重要的😂】
+## 设计思路一（已废弃）
+
+为实现这一目标，我们将 SGLang 的 `launch_server` 函数改写为 `launch_server_from_verl_engine`，允许我们在已有 `VerlEngine` 初始化的基础上，复用其 `TokenizerManager` 和 `SchedulerInfo`，从而避免重复创建通信管道或资源冲突。
+在SGLang系统中，TokenizerManager和SchedulerInfo已经建立了一套完整的进程间通信(IPC)机制，包括ZMQ socket通道，如果不复用这些现有资源而是重新创建，就会建立重复的通信管道，这些额外的通信管道会消耗系统资源(内存、文件描述符等)，并增加系统负担。
+当VerlEngine和HTTP Server分别创建自己的TokenizerManager和通信机制时，会出现争用相同资源的情况，下文出现的"第二次调用update_weights_from_tensor卡住"问题，就是资源冲突的具体表现。
 
 ## 测试流程
 
@@ -12,25 +16,26 @@
 
 ```bash
 cd ~
-
 python3 -m venv ~/.python/veRL-server
 source ~/.python/veRL-server/bin/activate
 python3 -m pip install uv
 
 # 安装 sglang
-
 git clone https://github.com/yitianlian/sglang-fork.git
 cd sglang-fork
 git checkout feature/http_server_engine
-python3 -m uv pip install -e "python[all]" --find-links https://flashinfer.ai/whl/cu124/torch2.5/flashinfer-python
+
+# 重要：安装修改后的包
+cd python
+pip install .
+pip install torch_memory_saver
 
 # 测试 veRL Server
-
-cd test/srt
+cd ../test/srt
 python test_verl_engine_server.py
 ```
 
-【在 atlas H100 和 novita H20 上全是 broken pipe，但是 SGLang CI 可以过，很奇怪？】
+我们之前遇到的 `BrokenPipeError: [Errno32] Broken Pipe` 错误已经找到根本原因。这个问题不是由端口冲突或服务器限制引起的，而是由于我们修改了SGLang的verl_Engine.py和http_server.py文件后，没有重新安装更新后的包所导致的。
 
 ## 开发思路
 
@@ -157,7 +162,7 @@ class VerlEngine:
 
 
 
-## 当前遇到的问题
+## 设计思路一遇到的问题
 
 目前的实现中，模型加载和 Server 启动都能成功，第一个 `update_weights_from_tensor` 调用也能顺利完成参数更新。然而在第二次调用该方法时，程序会**卡住不动，最终报出 NCCL 超时错误**。
 
@@ -169,14 +174,23 @@ class VerlEngine:
 
 ## 初步分析
 
-我推测该问题可能与多线程环境下资源抢占或 ZMQ 通信冲突有关。例如：
+我们推测多线程设计方案存在严重问题，导致无法可靠使用：
 
-- Server 启动后，FastAPI 或 Uvicorn 可能创建了新的事件循环或通信通道，影响了 `TokenizerManager` 原有的 IPC 通道。
-- `TokenizerManager` 虽然仍在运行，但其内部 ZMQ socket 的消息接收能力可能受到了主线程资源或 GIL 的竞争影响。
+1. 线程安全问题：
+    - TokenizerManager可能不是线程安全的，当同时被多个线程访问时会导致竞争条件。
 
-在经历了多线程的问题之后，我们换了一种新的解决方法：
+2. IPC通道干扰：
+    - Server线程(FastAPI/Uvicorn)创建的事件循环与主线程的ZMQ通信通道产生相互干扰。
+    - 这会导致pipe的一端被意外关闭，正如上文提到的 `BrokenPipeError: [Errno32] Broken Pipe` 这个报错。
 
-# 全新设计
+3. GIL限制下的阻塞：
+    - Python的GIL(全局解释器锁)在处理I/O密集型任务时，线程切换不及时。
+    - 当Server线程长时间占用GIL，会导致TokenizerManager无法及时响应ZMQ消息。
+
+4. 资源分配冲突：
+    - 两个线程同时操作网络资源导致端口竞争，这可能与Atlas/Novita服务器上出现的broken pipe错误有关。
+
+## 设计思路二 (现在采用版本)
 
 在这个设计中，存在一个多层委托的调用链：
 
