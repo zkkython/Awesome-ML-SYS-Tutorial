@@ -508,8 +508,30 @@ main_ppo.py
               │                 └── hotpotqa.compute_score(...extractor_urls=[], checker_urls=[]...)
 ```
 
+## 需求
+
+`main_ppo.py` 147行加一个分支，`HTTPRewardManager ` 直接复制 `SWEDevRewardManager`  的实现
+
+```python
+    if reward_manager_name == 'naive':
+        from verl.workers.reward_manager import NaiveRewardManager
+        reward_manager_cls = NaiveRewardManager
+    elif reward_manager_name == 'prime':
+        from verl.workers.reward_manager import PrimeRewardManager
+        reward_manager_cls = PrimeRewardManager
+    elif reward_manager_name == "swedev":
+        from verl.workers.reward_manager import SWEDevRewardManager
+        reward_manager_cls = SWEDevRewardManager
+############################## NEW ##############################
+    elif reward_manager_name == "http":
+        from verl.workers.reward_manager import HTTPRewardManager
+        reward_manager_cls = HTTPRewardManager
+############################## NEW ##############################
+    else:
+        raise NotImplementedError
+```
+
 ## 需要讨论的问题
 
-1. 方案选择：直接改 NaiveRewardManager 里相关的函数 or 把 SWEDevRewardManager 改成 HTTPRewardManager，不再只处理 swedev 问题。后者应该是之后代码重构才做的，但是个人觉得可能反而工作量小，因为这个类的接口写的比较清楚。
-2. process_action 和 postprocessing 具体做什么。我理解是 process_action 接收模型当下的回答然后给出反馈；postprocessing 在swedev 里是清除资源（关闭docker），之前的结果都写在文件里，所以最后计算 reward 的时候直接去读文件（personally agree，不知道有没有别的想法）。
+1. process_action 和 postprocessing 具体做什么。我理解是 process_action 接收模型当下的回答然后给出反馈；postprocessing 在swedev 里是清除资源（关闭docker），之前的结果都写在文件里，所以最后计算 reward 的时候直接去读文件（personally agree，不知道有没有别的想法）。
 
