@@ -1,6 +1,6 @@
 # veRL Server：基于 HTTP Server 的 rollout 接口
 
-【disclaim】这篇文章是 yivtianlian 参与 SGLang RL 的工作成果，全程有 jhinpan 和 fzyzcjy 的合作，最后 zhaochenyang20 完成了 review，感谢每位参与者的贡献。
+【disclaim】这篇文章是 yitianlian 参与 SGLang RL 的工作成果，全程有 jhinpan 和 fzyzcjy 的合作，最后 zhaochenyang20 完成了 review，感谢每位参与者的贡献。
 
 为了配合 agentic LLM 的训练，在现有的 PPO/GRPO 算法的基础上，从 single turn rollout 改动为和环境交互的 multi-turn rollout 是非常自然的选择。考虑到这一过程中，由于 enviroment 交互的延迟，turn 之间的等待时间很长，一直用 Engine 做 rollout 的话（`engine.generate`），可能连 continuous batching 都组不起来，所以，改用 server 来通过 https 做 rollout 的需求就呼之欲出了。除此之外，考虑到 enviroment 的交互也常常是通过 https 请求完成的，比如众多 sandbox，就是 enviroment 自己启动一个 sandbox 然后往里面发请求实现的。为了在 training engine，rollout 和 enviroment 三个子进程中保持良好的通讯和交互，避免通过同意，选择 server 势在必行。
 
@@ -187,7 +187,7 @@ class VerlEngine:
 4. 资源分配冲突：
     - 两个线程同时操作网络资源导致端口竞争，这可能与Atlas/Novita服务器上出现的broken pipe错误有关
 
-## 设计思路二
+## 设计思路二 (现在采用版本)
 
 在这个设计中，存在一个多层委托的调用链：
 
