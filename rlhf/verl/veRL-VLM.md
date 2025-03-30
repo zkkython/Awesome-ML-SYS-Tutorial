@@ -68,14 +68,8 @@ python3 -m uv pip install -e "python[all]" --find-links https://flashinfer.ai/wh
 
 ## 临时性缺陷修复 PR
 请将以下缺陷修复的修改应用到本地 sglang 和 verl 的代码中：
-
 sgl-project/sglang#4915
-
-sgl-project/sglang#4922
-
 volcengine/verl#824
-
-volcengine/verl#828
 
 ## 4 卡启动 Qwen2.5VL GRPO 训练脚本，并且使用 SGLang 作为 rollout 引擎
 
