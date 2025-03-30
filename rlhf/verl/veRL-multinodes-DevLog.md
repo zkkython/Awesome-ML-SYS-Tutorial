@@ -15,11 +15,18 @@ docker exec -it {YOUR CONTAINER NAME} /bin/zsh
 **2.** 安装verl-sglang需要的依赖
 
 ```
+apt install python3.10-venv
+
 git clone https://github.com/ocss884/verl.git verl-sglang
 cd verl-sglang
 git switch sglang_multinode
 python3 -m venv .venv --upgrade-deps
 source .venv/bin/activate
+
+# 在 venv 中需要补充安装的依赖
+pip install torch torchvision torchaudio build wheel
+
+# 安装 verl
 pip install ".[sglang]"
 pip install ".[gpu]"
 ```
