@@ -2,50 +2,20 @@
 
 【disclaim】这篇文章是 yitianlian 参与 SGLang RL 的工作成果，全程有 jhinpan 和 fzyzcjy 的合作，最后 zhaochenyang20 完成了 review，感谢每位参与者的贡献。
 
-为了配合 agentic LLM 的训练，在现有的 PPO/GRPO 算法的基础上，从 single turn rollout 改动为和环境交互的 multi-turn rollout 是非常自然的选择。考虑到这一过程中，由于 enviroment 交互的延迟，turn 之间的等待时间很长，一直用 Engine 做 rollout 的话（`engine.generate`），可能连 continuous batching 都组不起来，所以，改用 server 来通过 https 做 rollout 的需求就呼之欲出了。除此之外，考虑到 enviroment 的交互也常常是通过 https 请求完成的，比如众多 sandbox，就是 enviroment 自己启动一个 sandbox 然后往里面发请求实现的。为了在 training engine，rollout 和 enviroment 三个子进程中保持良好的通讯和交互，避免通过同意，选择 server 势在必行。
+为了配合 agentic LLM 的训练，在现有的 PPO/GRPO 算法的基础上，从 single turn rollout 改动为和环境交互的 multi-turn rollout 是非常自然的选择。考虑到这一过程中，由于 enviroment 交互的延迟，turn 之间的等待时间很长，一直用 Engine 做 rollout 的话（`engine.generate`），可能连 continuous batching 都组不起来，所以，改用 server 来通过 https 做 rollout 的需求就呼之欲出了。除此之外，enviroment 的交往往也是通过 https 请求来完成的，比如众多 sandbox，就是 enviroment 自己启动一个 server 暴露一个 port，然后往里面发请求实现的。为了在 training engine，rollout 和 enviroment 三个子进程中保持良好的通讯和交互，选择 server 势在必行。
 
-## 设计思路一（已废弃）
+## 设计思路一：一个收获良多的废案
 
-为实现这一目标，我们将 SGLang 的 `launch_server` 函数改写为 `launch_server_from_verl_engine`，允许我们在已有 `VerlEngine` 初始化的基础上，复用其 `TokenizerManager` 和 `SchedulerInfo`，从而避免重复创建通信管道或资源冲突。
-在SGLang系统中，TokenizerManager和SchedulerInfo已经建立了一套完整的进程间通信(IPC)机制，包括ZMQ socket通道，如果不复用这些现有资源而是重新创建，就会建立重复的通信管道，这些额外的通信管道会消耗系统资源(内存、文件描述符等)，并增加系统负担。
-当VerlEngine和HTTP Server分别创建自己的TokenizerManager和通信机制时，会出现争用相同资源的情况，下文出现的"第二次调用update_weights_from_tensor卡住"问题，就是资源冲突的具体表现。
+最开始，为实现这一目标，我们将 SGLang 的 `launch_server` 函数改写为 `launch_server_from_verl_engine`，允许我们在已有 `VerlEngine` 初始化的基础上，复用其 `TokenizerManager` 和 `SchedulerInfo`，从而避免重复创建通信管道或资源冲突。这样做是因为，在 SGLang 推理系统中，TokenizerManager 和 SchedulerInfo 已经建立了一套完整的进程间通信（IPC）机制，包括 ZMQ socket 通道。如果不复用这些现有资源而是重新创建，就会建立重复的通信管道，这些额外的通信管道会消耗系统资源（内存、文件描述符等），并增加系统负担。举个例子，下文出现的"第二次调用 `update_weights_from_tensor` 卡住"问题，就是资源冲突的具体表现。【你们都复用了 TokenizerManager 和 SchedulerInfo 了，为什么还会出现资源冲突？】
 
-## 测试流程
-
-启动新的虚拟环境，这里我们不用 docker，但是还是使用 uv。
-
-```bash
-cd ~
-python3 -m venv ~/.python/veRL-server
-source ~/.python/veRL-server/bin/activate
-python3 -m pip install uv
-
-# 安装 sglang
-git clone https://github.com/yitianlian/sglang-fork.git
-cd sglang-fork
-git checkout feature/http_server_engine
-
-# 重要：安装修改后的包
-cd python
-pip install .
-pip install torch_memory_saver
-
-# 测试 veRL Server
-cd ../test/srt
-python test_verl_engine_server.py
-```
-
-我们之前遇到的 `BrokenPipeError: [Errno32] Broken Pipe` 错误已经找到根本原因。这个问题不是由端口冲突或服务器限制引起的，而是由于我们修改了SGLang的verl_Engine.py和http_server.py文件后，没有重新安装更新后的包所导致的。
-
-## 开发思路
+以下展示这个废案的开发过程，复盘失败经验，走向成功人生。
 
 ### 增加 `launch_server_from_verl_engine`
 
-该函数与 [`launch_server`](https://github.com/sgl-project/sglang/blob/ef9a378a209d970e0b5c48ae3eac6f2660d43faf/python/sglang/srt/entrypoints/http_server.py#L659) 类似，但允许外部传入已有的 `tokenizer_manager` 和 `scheduler_info`，并从 `VerlEngine` 内部启动 HTTP Server。
+如同上文所述，我们增加 `launch_server_from_verl_engine` 函数作为 VerlEngine 的入口。该函数与 [`launch_server`](https://github.com/sgl-project/sglang/blob/ef9a378a209d970e0b5c48ae3eac6f2660d43faf/python/sglang/srt/entrypoints/http_server.py#L659) 类似，但允许外部传入已有的 `tokenizer_manager` 和 `scheduler_info`，并从 `VerlEngine` 内部启动 HTTP Server。
 
-【这么设计的意义是什么，为什么要外部传入？不这么设计的坏处是什么？】
-
-【这段代码在哪儿，我完全没看到？？？】
+<details>
+<summary>废案启动 verl server 的 endpoint</summary>
 
 ```python
 def launch_server_from_verl_engine(
@@ -102,9 +72,14 @@ def launch_server_from_verl_engine(
         warmup_thread.join()
 ```
 
+</details>
+
 ### 修改 `VerlEngine.__init__`
 
-我在 `tp_rank == 0` 的进程中，启动了一个新的线程来运行 `launch_server_from_verl_engine`，从而不阻塞主线程的初始化逻辑：
+我在 `tp_rank == 0` 的进程中，启动了一个新的线程来运行 `launch_server_from_verl_engine`，从而不阻塞主线程的初始化逻辑。并通过设置 `server_args.port` 为 `30000 + tp_rank` 避免端口冲突。
+
+<details>
+<summary>tp rank 0 上调用 launch_server_from_verl_engine</summary>
 
 ```python
 class VerlEngine:
@@ -158,41 +133,37 @@ class VerlEngine:
         dist.barrier(group=self._device_mesh_cpu.get_group())
 ```
 
-并通过设置 `server_args.port` 为 `30000 + tp_rank` 避免端口冲突。
+</details>
 
+### 设计思路一的问题
 
-
-## 设计思路一遇到的问题
-
-目前的实现中，模型加载和 Server 启动都能成功，第一个 `update_weights_from_tensor` 调用也能顺利完成参数更新。然而在第二次调用该方法时，程序会**卡住不动，最终报出 NCCL 超时错误**。
-
-经过调试发现：
+参考如上设计实现后，模型加载和 Server 启动都能成功，第一个 `update_weights_from_tensor` 调用也能顺利完成参数更新。然而在第二次调用该方法时，程序会**卡住不动，最终报出 NCCL 超时错误**。经过调试，我们发现：
 
 - `scheduler` 在处理完更新任务后，调用了 `send_to_tokenizer.send_pyobj(output)`。
 - 但 `tokenizer_manager` 的 `handler_loop` 虽然还在运行，却无法收到该消息，进而造成主进程阻塞。
 - 如果注释掉 Server 的启动逻辑（在 `VerlEngine` 初始化时不调用 `launch_server_from_verl_engine`），上述问题完全消失，说明是 server 的某些组件影响了原有的通信逻辑。
 
-## 初步分析
-
-我们推测多线程设计方案存在严重问题，导致无法可靠使用：
+据此，我们推测多线程设计方案存在严重问题，导致无法可靠使用：
 
 1. 线程安全问题：
-    - TokenizerManager可能不是线程安全的，当同时被多个线程访问时会导致竞争条件。
+    - TokenizerManager 可能不是线程安全的，当同时被多个线程访问时会导致竞争条件。
 
 2. IPC通道干扰：
-    - Server线程(FastAPI/Uvicorn)创建的事件循环与主线程的ZMQ通信通道产生相互干扰。
-    - 这会导致pipe的一端被意外关闭，正如上文提到的 `BrokenPipeError: [Errno32] Broken Pipe` 这个报错。
+    - Server 线程（FastAPI/Uvicorn）创建的事件循环与主线程的 ZMQ 通信通道产生相互干扰。
+    - 这会导致 pipe 的一端被意外关闭，正如上文提到的 `BrokenPipeError: [Errno32] Broken Pipe` 这个报错。
 
 3. GIL限制下的阻塞：
-    - Python的GIL(全局解释器锁)在处理I/O密集型任务时，线程切换不及时。
-    - 当Server线程长时间占用GIL，会导致TokenizerManager无法及时响应ZMQ消息。
+    - Python 的 GIL（全局解释器锁）在处理 I/O 密集型任务时，线程切换不及时。
+    - 当 Server 线程长时间占用 GIL，会导致 TokenizerManager 无法及时响应 ZMQ 消息。
 
 4. 资源分配冲突：
-    - 两个线程同时操作网络资源导致端口竞争，这可能与Atlas/Novita服务器上出现的broken pipe错误有关。
+    - 两个线程同时操作网络资源导致端口竞争，这可能与服务器上出现的 broken pipe 错误有关。
 
-## 设计思路二 (现在采用版本)
+## 实际执行的方案
 
 在这个设计中，存在一个多层委托的调用链：
+
+【这个叙述逻辑我没看懂，能按照废案 1 的叙述来讲讲思路，并且强调和 1 的区别？1 是直接复用了 TokenizerManager 和 SchedulerInfo 么？】
 
 1. **调用链分析**:
    - test_verl_engine_server.py中调用`engine.update_weights_from_tensor()`
@@ -252,3 +223,29 @@ class VerlEngine:
    当前 `update_weights_from_distributed` 的实现逻辑是：在 rank 0 上保存模型参数，并通过 TCP 将参数广播至其他 ranks（如 rank 1、rank 2）。然而，在 Verl 框架中，HybridEngine 会将 training 与 inference 部署在同一资源池上。这就导致同一个 rank 的同一个端口需同时承担发送与接收任务，进而产生端口冲突。因此，该方法与 VerlEngine 的资源调度方式不兼容，无法直接采用。
 
 综上，`update_weights_from_tensor` 在兼容性、性能和设计合理性方面均更符合当前实现的需求，因此我们选择了这一方案。
+
+
+## 最终效果测试
+
+启动新的虚拟环境，这里我们不用 docker，但是还是使用 uv。
+
+```bash
+cd ~
+python3 -m venv ~/.python/veRL-server
+source ~/.python/veRL-server/bin/activate
+python3 -m pip install uv
+
+# 安装 sglang
+git clone https://github.com/yitianlian/sglang-fork.git
+cd sglang-fork
+git checkout feature/http_server_engine
+
+# 重要：安装修改后的包
+cd python
+pip install .
+pip install torch_memory_saver
+
+# 测试 veRL Server
+cd ../test/srt
+python test_verl_engine_server.py
+```
