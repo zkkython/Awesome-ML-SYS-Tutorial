@@ -36,7 +36,11 @@ python test_verl_engine_server.py
 
 ### 增加 `launch_server_from_verl_engine`
 
-该函数与 [`launch_server`](https://github.com/sgl-project/sglang/blob/ef9a378a209d970e0b5c48ae3eac6f2660d43faf/python/sglang/srt/entrypoints/http_server.py#L659) 类似，但允许外部传入已有的 `tokenizer_manager` 和 `scheduler_info`，并从 `VerlEngine` 内部启动 HTTP Server。【这么设计的意义是什么，为什么要外部传入？不这么设计的坏处是什么？】
+该函数与 [`launch_server`](https://github.com/sgl-project/sglang/blob/ef9a378a209d970e0b5c48ae3eac6f2660d43faf/python/sglang/srt/entrypoints/http_server.py#L659) 类似，但允许外部传入已有的 `tokenizer_manager` 和 `scheduler_info`，并从 `VerlEngine` 内部启动 HTTP Server。
+
+【这么设计的意义是什么，为什么要外部传入？不这么设计的坏处是什么？】
+
+【这段代码在哪儿，我完全没看到？？？】
 
 ```python
 def launch_server_from_verl_engine(
@@ -91,9 +95,6 @@ def launch_server_from_verl_engine(
         )
     finally:
         warmup_thread.join()
-
-
-
 ```
 
 ### 修改 `VerlEngine.__init__`
@@ -101,7 +102,6 @@ def launch_server_from_verl_engine(
 我在 `tp_rank == 0` 的进程中，启动了一个新的线程来运行 `launch_server_from_verl_engine`，从而不阻塞主线程的初始化逻辑：
 
 ```python
-
 class VerlEngine:
     def __init__(
         self,
