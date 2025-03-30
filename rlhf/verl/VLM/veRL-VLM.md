@@ -149,4 +149,5 @@ bash examples/grpo_trainer/run_qwen2_5_vl-7b.sh sglang
 ```
 
 目前情况：
+
 - 在 val 的结果距离vllm 有差距（0.37 vs 0.40），应该是 verl 的 evalute 有问题，要对着 sglang 在没有训练之前拉通 evaluate 结果。

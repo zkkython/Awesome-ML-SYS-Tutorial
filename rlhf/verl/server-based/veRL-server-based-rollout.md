@@ -166,21 +166,23 @@ class VerlEngine:
 【这个叙述逻辑我没看懂，能按照废案 1 的叙述来讲讲思路，并且强调和 1 的区别？1 是直接复用了 TokenizerManager 和 SchedulerInfo 么？】
 
 1. **调用链分析**:
-   - test_verl_engine_server.py中调用`engine.update_weights_from_tensor()`
-   - 这个engine实际上是VerlEngine的实例
-   - VerlEngine内部在初始化时创建了HttpServerEngineAdapter作为其`_engine`属性
-   - 当调用VerlEngine的update_weights_from_tensor时，它内部会调用`self._engine.update_weights_from_tensor()`
+   - test_verl_engine_server.py 中调用 `engine.update_weights_from_tensor()`
+   - 这个 engine 实际上是 VerlEngine 的实例
+   - VerlEngine 内部在初始化时创建了 HttpServerEngineAdapter 作为其 `_engine` 属性
+   - 当调用 VerlEngine 的 `update_weights_from_tensor` 时，它内部会调用 `self._engine.update_weights_from_tensor()`
 
 2. **关键代码连接点**:
-   在verl_engine.py中，VerlEngine的初始化有这样一段代码：
+   在 `verl_engine.py` 中，VerlEngine 的初始化有这样一段代码：
+
    ```python
    if "launch_server" in kwargs and kwargs["launch_server"]:
-       # 构建server_args...
+       # 构建 server_args...
        if self._tp_rank == 0:
            self._engine = HttpServerEngineAdapter(server_args)
    ```
 
-   而在test_verl_engine_server.py中启动VerlEngine时有：
+   而在 `test_verl_engine_server.py` 中启动 VerlEngine 时有：
+
    ```python
    engine = VerlEngine(
        # 其他参数...
@@ -189,15 +191,15 @@ class VerlEngine:
    ```
 
 3. **HTTP服务器的启动和通信**:
-   - 当传入`launch_server=True`时，VerlEngine会创建一个HttpServerEngineAdapter
-   - HttpServerEngineAdapter会启动一个HTTP服务器进程
-   - VerlEngine的update_weights_from_tensor方法会收集所有节点的张量数据
-   - 在主节点(tp_rank=0)上，它通过HttpServerEngineAdapter发送HTTP请求来更新权重
+   - 当传入 `launch_server=True` 时，VerlEngine 会创建一个 HttpServerEngineAdapter
+   - HttpServerEngineAdapter 会启动一个 HTTP 服务器进程
+   - VerlEngine 的 `update_weights_from_tensor` 方法会收集所有节点的张量数据
+   - 在主节点（`tp_rank=0`）上，它通过 HttpServerEngineAdapter 发送 HTTP 请求来更新权重
 
 4. **分布式协作机制**:
    ```python
-   # VerlEngine中的update_weights_from_tensor
-   if self._tp_rank == 0:  # 只有主节点发送HTTP请求
+   # VerlEngine 中的 update_weights_from_tensor
+   if self._tp_rank == 0:  # 只有主节点发送 HTTP 请求
        self._engine.update_weights_from_tensor(
            named_tensors=[(name, LocalSerializedTensor(values=gathered_serialized_tensors))],
            # 其他参数...
@@ -205,8 +207,8 @@ class VerlEngine:
    ```
 
 这样的设计实现了一个完整的客户端-服务器架构：
-- 服务器端是HttpServerEngineAdapter启动的HTTP服务器进程
-- 客户端是VerlEngine通过HttpServerEngineAdapter发送的HTTP请求
+- 服务器端是 HttpServerEngineAdapter 启动的 HTTP 服务器进程
+- 客户端是 VerlEngine 通过 HttpServerEngineAdapter 发送的 HTTP 请求
 
 
 ### 为什么我们不采用 `update_weights_from_distributed` 来更新 Server 参数
