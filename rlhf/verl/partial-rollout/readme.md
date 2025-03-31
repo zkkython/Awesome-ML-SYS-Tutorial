@@ -6,4 +6,39 @@
 
 絮絮叨叨说了这么多，这篇文章主要复盘自己拜读 K1.5 技术报告的思索。由于是技术报告，这篇扎实的文章涵盖了从数据、训练方法到训练系统的方方面面，读完真是余音绕梁，不绝如缕。
 
-## 
+## RL Recipe
+
+K1.5 的训练可以细分为 pretrain，vanila SFT，long-CoT SFT 和 RL 四个阶段。技术报告主要讲述的是 RL 阶段的故事。
+
+### RL prompt 选择
+
+高质量的 RL prompt 需要 diver, balance and accurate to evaluate。为了决定每个 prompt 的难度，作者采用一个 SFT 模型在较高的 temperature 下生成 10 次答案，以 10 次内的通过率作为难度。此外，一些复杂的推理问题可能通过错误的推理过程也能得出正确答案。为了避免此类 reward hacking，作者进一步确保每个 prompt 的 reasoning path 和 final answer 都能被准确验证。作者先排除了容易出现此类错误的题目，例如多选题、判断题和证明题。然后，作者进一步过滤掉一些容易猜测出答案的问题。具体来说，给模型 8 次机会，如果在没有 CoT 的情况下，有超过 1 次可以直接给出答案，就将其移除。
+
+### Long-CoT SFT
+
+作者通过 prompt engineering 构建了一个 multi-modal long-CoT warmup dataset，来让模型初步学会这几种推理能力，evaluation，reflection，exploration 和 planning。
+
+### Length Penalty
+
+在进行 long context RL 训练的过程中，如果不对模型的输出长度做出控制，会很容易观测到 answer length 的显著增加。虽然这带来了更好的性能，但过长的推理过程在训练和推理时成本高昂，而且人类通常不倾向于过度思考。因此，作者引入了一个长度惩罚项，来控制模型的输出长度：
+
+$$ \text{len\_reward}(i) = \begin{cases} \lambda & \text{if } r(x, y_i, y^*) = 1 \\ \min(0, \lambda) & \text{if } r(x, y_i, y^*) = 0 \end{cases} $$
+
+$$ \lambda = 0.5 - \frac{\text{len}(i) - \text{min\_len}}{\text{max\_len} - \text{min\_len}} $$
+
+分开想想这几种情况：
+
+1. 最长的推理过程，正确的答案。$len\_reward = -0.5$，抑制模型生成此推理过程。
+2. 最长的推理过程，错误的答案。$len\_reward = -0.5$，抑制模型生成此推理过程。
+3. 最短的推理过程，正确的答案。$len\_reward = 0.5$，鼓励模型生成此推理过程。
+4. 最短的推理过程，错误的答案。$len\_reward = 0$，对模型没有影响。
+
+对于长度在 $\frac{\text{max\_len} + \text{min\_len}}{2}$ 以下的的推理过程，如果答案错误，则 length reward 为 0，如果答案正确，则 length reward 大于 0 且随着 length 递减。超过这个长度的 reasoning path，无论答案正误与否，都给一样的负分 length reward。
+
+### 采样策略
+
+虽然 RL 本身具有较好的采样特性，也即难度更高的问题会提供更大的梯度，但其训练效率仍然有限。一些明确的先验采样方法可能会带来更大的性能提升。作者采用的方案有：
+
+1. 课程学习：从较简单的任务开始训练，逐步过渡到更具挑战性的任务。由于初始 RL 模型的性能有限，在非常困难的问题上花费有限的计算预算往往只能产生很少的正确样本，从而导致较低的训练效率。同时，用于训练的数据天然就包含难度标签，进一步让难度递增学习策略直观且有效。
+2. 优先采样：成功率较低的问题采样更多次。我们跟踪每个问题 $i$ 的成功率 $s_i$，并按照 $1 - s_i$ 的比例采样问题，从而使成功率较低的问题获得更高的采样概率。这将模型的努力集中在它最薄弱的领域，从而加速学习并提升整体性能。
+
