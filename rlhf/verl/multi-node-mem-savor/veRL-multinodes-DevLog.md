@@ -10,7 +10,7 @@ https://gist.github.com/fzyzcjy/01b851e045b970f16e63580b12dbf7ab
 **1.** 登陆 novita_h20_1
 
 ```bash
-ssh novita_hwo_1
+ssh novita_h20_1
 docker exec -it {YOUR CONTAINER NAME} /bin/zsh
 ```
 
@@ -92,7 +92,7 @@ torchrun --nnodes=2 --nproc_per_node=2 --master_addr=<NODE0 IP> --master_port=34
 </details>
 
 <details>
-<summary>rollout DP=2，TP=2 （跨机TP）</summary>
+<summary>verl rollout DP=2，TP=2 （跨机TP）</summary>
  
 ```bash
 set -x
@@ -145,7 +145,7 @@ python3 -m verl.trainer.main_ppo \
 </details>
 
 <details>
-<summary>rollout DP=1，TP=4 （单机TP）</summary>
+<summary>verl rollout DP=1，TP=4 （单机TP）</summary>
  
 ```
 set -x
@@ -197,6 +197,8 @@ python3 -m verl.trainer.main_ppo \
 ```
 </details>
 
+注：verl rollout均可直接使用`multinode_sglang.sh`文件来测试
+
 ## 常见问题
 
 **1.** `pip install .[sglang]` 失败  
@@ -211,6 +213,168 @@ python3 -m verl.trainer.main_ppo \
 pip install --upgrade pip
 ```
 
-## Debug记录
-**1.** `CUDA initialization: Unexpected` error from cudaGetDeviceCount()  
+## Debug记录（priority 1-5）
+- [x] `CUDA initialization: Unexpected` error from cudaGetDeviceCount() (**5**)
+
 `CUDA_VISIBLE_DEVICES`不合法的设置导致，注意检查sglang_rollout里替换`CUDA_VISIBLE_DEVICES`时是否会all gather出如`0,1,0,1`这种不合法的值
+
+- [ ] `VerlEngine`无法启动`deepseek-ai/deepseek-llm-7b-chat` (**4**)
+
+[模型结构](https://huggingface.co/deepseek-ai/deepseek-llm-7b-chat/blob/main/config.json)其实就是`Llama`，我(linjunrong)已经尝试过
+- python -m sglang.launch_server --tp 4 --model-path deepseek-ai/deepseek-llm-7b-chat --host 0.0.0.0
+- engine = Engine(model_path="deepseek-ai/deepseek-llm-7b-chat", tp_size=4, node_rank=0, nnodes=1)
+
+二者均可以成功，需要检查一下verlengine使用什么的额外参数导致了下面的报错。[related issue](https://github.com/pytorch/pytorch/issues/145168) from youkaichao
+<details>
+ <summary>error</summary>
+ 
+```shell
+[2025-04-01 23:22:06 TP1] Scheduler hit an exception: Traceback (most recent call last):
+  File "/data/gpu-use/verl-sglang/.venv/lib/python3.10/site-packages/sglang/srt/managers/scheduler.py", line 1999, in run_scheduler_process
+    scheduler = Scheduler(server_args, port_args, gpu_id, tp_rank, dp_rank)
+  File "/data/gpu-use/verl-sglang/.venv/lib/python3.10/site-packages/sglang/srt/managers/scheduler.py", line 249, in __init__
+    self.tp_worker = TpWorkerClass(
+  File "/data/gpu-use/verl-sglang/.venv/lib/python3.10/site-packages/sglang/srt/managers/tp_worker_overlap_thread.py", line 63, in __init__
+    self.worker = TpModelWorker(server_args, gpu_id, tp_rank, dp_rank, nccl_port)
+  File "/data/gpu-use/verl-sglang/.venv/lib/python3.10/site-packages/sglang/srt/managers/tp_worker.py", line 74, in __init__
+    self.model_runner = ModelRunner(
+  File "/data/gpu-use/verl-sglang/.venv/lib/python3.10/site-packages/sglang/srt/model_executor/model_runner.py", line 169, in __init__
+    self.initialize(min_per_gpu_memory)
+  File "/data/gpu-use/verl-sglang/.venv/lib/python3.10/site-packages/sglang/srt/model_executor/model_runner.py", line 179, in initialize
+    self.load_model()
+  File "/data/gpu-use/verl-sglang/.venv/lib/python3.10/site-packages/sglang/srt/model_executor/model_runner.py", line 392, in load_model
+    self.model = get_model(
+  File "/data/gpu-use/verl-sglang/.venv/lib/python3.10/site-packages/sglang/srt/model_loader/__init__.py", line 22, in get_model
+    return loader.load_model(
+  File "/data/gpu-use/verl-sglang/.venv/lib/python3.10/site-packages/sglang/srt/model_loader/loader.py", line 370, in load_model
+    model.load_weights(self._get_all_weights(model_config, model))
+  File "/data/gpu-use/verl-sglang/.venv/lib/python3.10/site-packages/sglang/srt/models/llama.py", line 481, in load_weights
+    for name, loaded_weight in weights:
+  File "/data/gpu-use/verl-sglang/.venv/lib/python3.10/site-packages/sglang/srt/model_loader/loader.py", line 343, in _get_all_weights
+    yield from self._get_weights_iterator(primary_weights)
+  File "/data/gpu-use/verl-sglang/.venv/lib/python3.10/site-packages/sglang/srt/model_loader/loader.py", line 329, in <genexpr>
+    return ((source.prefix + name, tensor) for (name, tensor) in weights_iterator)
+  File "/data/gpu-use/verl-sglang/.venv/lib/python3.10/site-packages/sglang/srt/model_loader/weight_utils.py", line 460, in pt_weights_iterator
+    torch.cuda.empty_cache()
+  File "/data/gpu-use/verl-sglang/.venv/lib/python3.10/site-packages/torch/cuda/memory.py", line 192, in empty_cache
+    torch._C._cuda_emptyCache()
+RuntimeError: captures_underway.empty() INTERNAL ASSERT FAILED at "../c10/cuda/CUDACachingAllocator.cpp":2967, please report a bug to PyTorch.
+```
+</details>
+
+<details>
+ <summary>sglang.check_env</summary>
+ 
+ ```bash
+ Python: 3.10.12 (main, Feb  4 2025, 14:57:36) [GCC 11.4.0]
+CUDA available: True
+GPU 0,1,2,3: NVIDIA H800
+GPU 0,1,2,3 Compute Capability: 9.0
+CUDA_HOME: /data/cuda/cuda-12.4/cuda
+NVCC: Cuda compilation tools, release 12.4, V12.4.131
+CUDA Driver Version: 535.129.03
+PyTorch: 2.5.1+cu124
+sglang: 0.4.4.post3
+sgl_kernel: 0.0.5.post4
+flashinfer: Module Not Found
+triton: 3.1.0
+transformers: 4.50.0
+torchao: 0.9.0
+numpy: 2.2.4
+aiohttp: 3.11.14
+fastapi: 0.115.12
+hf_transfer: 0.1.9
+huggingface_hub: 0.30.0
+interegular: 0.3.3
+modelscope: 1.24.1
+orjson: 3.10.16
+outlines: 0.1.11
+packaging: 24.2
+psutil: 7.0.0
+pydantic: 2.11.1
+multipart: Module Not Found
+zmq: Module Not Found
+uvicorn: 0.34.0
+uvloop: 0.21.0
+vllm: Module Not Found
+xgrammar: 0.1.17
+openai: 1.69.0
+tiktoken: 0.9.0
+anthropic: 0.49.0
+litellm: 1.65.0
+decord: 0.6.0
+NVIDIA Topology: 
+	[4mGPU0	GPU1	GPU2	GPU3	NIC0	NIC1	NIC2	NIC3	NIC4	NIC5	NIC6	NIC7	NIC8	NIC9	NIC10	NIC11	NIC12	NIC13	NIC14	NIC15	NIC16	CPU Affinity	NUMA Affinity	GPU NUMA ID[0m
+GPU0	 X 	NV8	NV8	NV8	SYS	SYS	SYS	SYS	PIX	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	PIX	SYS	SYS	SYS				N/A
+GPU1	NV8	 X 	NV8	NV8	SYS	SYS	SYS	SYS	SYS	SYS	PIX	SYS	SYS	SYS	SYS	SYS	SYS	SYS	PIX	SYS	SYS				N/A
+GPU2	NV8	NV8	 X 	NV8	SYS	SYS	SYS	SYS	SYS	SYS	SYS	PIX	SYS	SYS	SYS	SYS	SYS	SYS	SYS	PIX	SYS				N/A
+GPU3	NV8	NV8	NV8	 X 	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	PIX	SYS	SYS	SYS	SYS	SYS	SYS	SYS	PIX				N/A
+NIC0	SYS	SYS	SYS	SYS	 X 	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	PIX	SYS	SYS	SYS	SYS	SYS	SYS	SYS				
+NIC1	SYS	SYS	SYS	SYS	SYS	 X 	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	PIX	SYS	SYS	SYS	SYS	SYS	SYS				
+NIC2	SYS	SYS	SYS	SYS	SYS	SYS	 X 	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	PIX	SYS	SYS	SYS	SYS	SYS				
+NIC3	SYS	SYS	SYS	SYS	SYS	SYS	SYS	 X 	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	PIX	SYS	SYS	SYS	SYS				
+NIC4	PIX	SYS	SYS	SYS	SYS	SYS	SYS	SYS	 X 	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	PIX	SYS	SYS	SYS				
+NIC5	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	 X 	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS				
+NIC6	SYS	PIX	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	 X 	SYS	SYS	SYS	SYS	SYS	SYS	SYS	PIX	SYS	SYS				
+NIC7	SYS	SYS	PIX	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	 X 	SYS	SYS	SYS	SYS	SYS	SYS	SYS	PIX	SYS				
+NIC8	SYS	SYS	SYS	PIX	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	 X 	SYS	SYS	SYS	SYS	SYS	SYS	SYS	PIX				
+NIC9	SYS	SYS	SYS	SYS	PIX	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	 X 	SYS	SYS	SYS	SYS	SYS	SYS	SYS				
+NIC10	SYS	SYS	SYS	SYS	SYS	PIX	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	 X 	SYS	SYS	SYS	SYS	SYS	SYS				
+NIC11	SYS	SYS	SYS	SYS	SYS	SYS	PIX	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	 X 	SYS	SYS	SYS	SYS	SYS				
+NIC12	SYS	SYS	SYS	SYS	SYS	SYS	SYS	PIX	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	 X 	SYS	SYS	SYS	SYS				
+NIC13	PIX	SYS	SYS	SYS	SYS	SYS	SYS	SYS	PIX	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	 X 	SYS	SYS	SYS				
+NIC14	SYS	PIX	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	PIX	SYS	SYS	SYS	SYS	SYS	SYS	SYS	 X 	SYS	SYS				
+NIC15	SYS	SYS	PIX	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	PIX	SYS	SYS	SYS	SYS	SYS	SYS	SYS	 X 	SYS				
+NIC16	SYS	SYS	SYS	PIX	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	PIX	SYS	SYS	SYS	SYS	SYS	SYS	SYS	 X 				
+
+Legend:
+
+  X    = Self
+  SYS  = Connection traversing PCIe as well as the SMP interconnect between NUMA nodes (e.g., QPI/UPI)
+  NODE = Connection traversing PCIe as well as the interconnect between PCIe Host Bridges within a NUMA node
+  PHB  = Connection traversing PCIe as well as a PCIe Host Bridge (typically the CPU)
+  PXB  = Connection traversing multiple PCIe bridges (without traversing the PCIe Host Bridge)
+  PIX  = Connection traversing at most a single PCIe bridge
+  NV#  = Connection traversing a bonded set of # NVLinks
+
+NIC Legend:
+
+  NIC0: mlx5_0
+  NIC1: mlx5_1
+  NIC2: mlx5_2
+  NIC3: mlx5_3
+  NIC4: mlx5_4
+  NIC5: mlx5_5
+  NIC6: mlx5_6
+  NIC7: mlx5_7
+  NIC8: mlx5_8
+  NIC9: mlx5_9
+  NIC10: mlx5_10
+  NIC11: mlx5_11
+  NIC12: mlx5_12
+  NIC13: mlx5_13
+  NIC14: mlx5_14
+  NIC15: mlx5_15
+  NIC16: mlx5_16
+
+
+ulimit soft: 524288
+
+ ```
+</details>
+
+<details>
+ <summary>复现脚本，单机 DP=1 TP=4 </summary>
+ 
+ 1. 将`torchrun_verlengine.py`的`== Parallel ==`部分改为
+ ```
+ dp, tp, pp = 1, 4, 1
+ device_count = 4
+ model_name = "deepseek-ai/deepseek-llm-7b-chat"
+ ```
+ 
+ 2.运行下面的命令
+ ```bash
+ torchrun --nnodes=1 --nproc_per_node=4 --master_addr=<NODE0 IP> --master_port=34567 torchrun_verlengine.py
+ ```
+</details>
