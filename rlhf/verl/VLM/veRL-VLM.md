@@ -52,7 +52,7 @@ python3 -m pip install --upgrade uv
 cd ~
 git clone https://github.com/volcengine/verl.git
 cd verl
-python3 -m uv pip install .
+python3 -m uv pip install -e ".[sglang]"
 python3 -m uv pip install -r ./requirements.txt
 ```
 
@@ -65,6 +65,11 @@ cd sglang
 python3 -m uv pip install --upgrade pip
 python3 -m uv pip install -e "python[all]" --find-links https://flashinfer.ai/whl/cu124/torch2.5/flashinfer-python
 ```
+
+## 临时性缺陷修复 PR
+请将以下缺陷修复的修改应用到本地 sglang 和 verl 的代码中：
+- sgl-project/sglang#4915
+- volcengine/verl#824
 
 ## 4 卡启动 Qwen2.5VL GRPO 训练脚本，并且使用 SGLang 作为 rollout 引擎
 
@@ -131,11 +136,13 @@ python3 -m verl.trainer.main_ppo \
 
 修改结束后，启动 4 卡训练，可以稳定报错：
 
-
 ```bash
 # 启动 GRPO 训练脚本， 记得去掉 examples/grpo_trainer/run_qwen2_5_vl-7b.sh 结尾的 $@
 # 注意，跑的是 qwen 2.5 的，不是 qwen2 的，别把文件弄混了
 bash examples/grpo_trainer/run_qwen2_5_vl-7b.sh sglang
 ```
 
-目前的情况是，整个流程可以跑通了，现在 val 的结果很低，应该是 verl 的 evalute 直接接错了，要对着 sglang 在没有训练之前拉通 evaluate 结果。
+目前情况：
+- 报错，log如下
+  <img width="1164" alt="Image" src="https://github.com/user-attachments/assets/54c863c1-fb26-452f-9718-f17da3a1dfe3" />
+- 在 val 的结果距离vllm 有差距（0.37 vs 0.40），应该是 verl 的 evalute 有问题，要对着 sglang 在没有训练之前拉通 evaluate 结果。

@@ -321,11 +321,11 @@ SandboxFusion 是一个用于**代码执行**和**评估**的多功能平台，�
 
 ### 支持的编程语言
 
-![支持的编程语言](./img/sandbox_supported_languages.png)
+![支持的编程语言](../img/sandbox_supported_languages.png)
 
 ### 实现的开源数据集
 
-![支持的数据集](./img/sandbox_supported_datasets.png)
+![支持的数据集](../img/sandbox_supported_datasets.png)
 
 ## 本地部署
 
