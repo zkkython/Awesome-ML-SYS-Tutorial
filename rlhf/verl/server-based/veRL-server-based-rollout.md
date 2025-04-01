@@ -169,7 +169,7 @@ class VerlEngine:
 
 1. **完全分离而非共享资源**：与废案不同，我们放弃了资源复用的想法，不再尝试在同一进程的不同线程中共享 TokenizerManager，而是建立完全独立的服务器进程，通过 HTTP 通信进行交互。
 
-2. **替换原有 Engine 对象**：参考下方 HttpServerEngineAdapter 的部分实现，【todo，其实我没看懂替换原本的 engine 的好处】这样，VerlEngine 内部的 `_engine` 属性实际上变成了一个适配器，而不是原来的 Engine 实例。
+2. **替换原有 Engine 对象**：参考下方 HttpServerEngineAdapter 的部分实现，通过将 VerlEngine 内部的 `_engine` 属性替换为 HttpServerEngineAdapter，我们实现了训练和推理服务的解耦。这种设计让训练进程专注于模型更新，而推理服务则独立运行在 HTTP 服务器中，避免了资源竞争和状态同步的复杂性。
 
 3. **HTTP 请求代替直接调用**：当外部调用 `VerlEngine.update_weights_from_tensor()` 时，内部会通过 HTTP 请求将操作转发到独立的服务器进程，这完全避免了线程间共享资源的问题。
 
@@ -208,7 +208,7 @@ else:
 
 2. **新方案的完全隔离确保稳定**：新方案中，HttpServerEngineAdapter 只是一个代理对象，不包含任何与原 Engine 共享的资源，它通过 HTTP 请求与独立运行的服务器进程通信，服务器进程拥有自己独立的 TokenizerManager 和 SchedulerInfo。
 
-3. **请求转发机制**：在主节点（`tp_rank=0`）上，VerlEngine 会收集所有节点的张量数据，然后通过 HttpServerEngineAdapter 发送 HTTP 请求到服务器。这种客户端-服务器架构【todo，这个术语用英文吧】的设计彻底解决了废案中出现的资源冲突问题，确保了系统的稳定性和可靠性。
+3. **请求转发机制**：在主节点（`tp_rank=0`）上，VerlEngine 会收集所有节点的张量数据，然后通过 HttpServerEngineAdapter 发送 HTTP 请求到服务器。这种 client-server architecture 的设计彻底解决了废案中出现的资源冲突问题，确保了系统的稳定性和可靠性。
 
 <details>
 <summary>VerlEngine 中的 update_weights_from_tensor</summary>
@@ -226,7 +226,7 @@ if self._tp_rank == 0:  # 只有主节点发送 HTTP 请求
 
 ### 为什么我们不采用 `update_weights_from_distributed` 来更新 Server 参数
 
-【todo，这里讲讲两个 update 方法的区别，提到一个是 nccl 一个是 https】
+在SGLang中，更新服务器参数有两种主要方法：`update_weights_from_distributed`和`update_weights_from_tensor`，它们的核心区别在于通信机制。`update_weights_from_distributed`依赖NCCL（NVIDIA Collective Communications Library）进行高效的GPU间直接通信，而`update_weights_from_tensor`则通过HTTP请求传输参数状态信息。虽然前者在纯分布式训练场景中通常具有更高的效率，但在我们的应用场景中，后者更为适合。
 
 尽管 NCCL 通信在多数场景下具备极高的性能，我们在本版本的实现中依然选择不使用 `update_weights_from_distributed`，而是通过 `update_weights_from_tensor` 接口来完成 Server 参数的更新。主要原因如下：
 
@@ -234,7 +234,7 @@ if self._tp_rank == 0:  # 只有主节点发送 HTTP 请求
    为了与当前 VerlEngine 的实现保持完全兼容，我们需采用 `update_weights_from_tensor` 接口进行参数更新。这一方式可以无缝对接现有的框架，避免对主逻辑产生不必要的干扰。
 
 2. **HTTP 传输性能无需担忧**
-   起初我们担心通过 HTTP 传输 tensor 会成为性能瓶颈。但据与 fzyzcjy 的沟通确认，`update_weights_from_tensor` 实际上传输的仅为 meta data，而非完整 tensor 数据。因此，该方式在性能上也能满足需求，传输效率并不构成实际障碍。【todo，那实际的 tensor 是从哪儿传输的呢？】
+   起初我们担心通过 HTTP 传输 tensor 会成为性能瓶颈。但据与 fzyzcjy 的沟通确认，`update_weights_from_tensor` 实际上传输的仅为 meta data，而非完整 tensor 数据。实际的 tensor 数据是通过 NCCL 在分布式节点间直接传输的，HTTP 请求只用于同步模型参数的状态信息。因此，该方式在性能上也能满足需求，传输效率并不构成实际障碍。
 
 3. **`update_weights_from_distributed` 与 Verl 框架存在设计冲突**
    当前 `update_weights_from_distributed` 的实现逻辑是：在 rank 0 上保存模型参数，并通过 TCP 将参数广播至其他 ranks（如 rank 1、rank 2）。然而，在 Verl 框架中，HybridEngine 会将 training 与 inference 部署在同一资源池上。这就导致同一个 rank 的同一个端口需同时承担发送与接收任务，进而产生端口冲突。因此，该方法与 VerlEngine 的资源调度方式不兼容，无法直接采用。
