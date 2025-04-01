@@ -57,7 +57,7 @@ reward_manager_name = config.reward_model.get("reward_manager", "naive")
 
 ### 2. 根据 `task_type` 获取关键函数
 
-这是第一个扩展点，"gsm8k" 这行是我额外加的，然后对应的实现 `gsm8k_start`，`gsm8k_obs`，`gsm8k_end` 来支持 multiturn（TODO: 实现还有问题）。
+这是第一个扩展点，"gsm8k" 这行是我额外加的，然后对应的实现 `gsm8k_start`，`gsm8k_obs`，`gsm8k_end` 来支持 multiturn。
 
 ```python
 # verl/workers/agentic/async_rollout.py
@@ -72,7 +72,7 @@ loop_fn, start_fn, gen_fn, obs_fn, end_fn = {
 
 ### 3. 生成 prompt 和数据集
 
-第二个扩展点，为 `gsm8k` 提供获取 prompt 和处理数据集的工具方法。需要实现 `generate_gsm8k_prompt` 和 `preprocess_gsm8k_dataset`。（TODO: prompt 可能需要优化一下，除此之外这两个函数实现的正确性应该没问题）
+第二个扩展点，为 `gsm8k` 提供获取 prompt 和处理数据集的工具方法。需要实现 `generate_gsm8k_prompt` 和 `preprocess_gsm8k_dataset`。
 
 ```python
 # verl/utils/agentic_utils.py
@@ -95,4 +95,11 @@ SPECIFIC_TENSOR_LIST = {
     "gsm8k": [] 
 }
 ```
+
+## TODO
+
+1. prompt 可以优化一下，现在按照 `#### <answer>` 输出不是太稳定；reward 计算也可以优化 ，现在 strict 模式下严格提取 `####` 之后的内容，不匹配就 0 分了，可以考虑加个格式惩罚。flexible 模式（提取最后出现的数字）没跑过，之后可以试试。
+
+2. `gsm8k_obs()` 应该提供feedback；
+3. 不同任务可视化用到的 metric 不一样，目前没有处理。
 
