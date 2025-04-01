@@ -169,7 +169,7 @@ class VerlEngine:
 
 1. **完全分离而非共享资源**：与废案不同，我们放弃了资源复用的想法，不再尝试在同一进程的不同线程中共享 TokenizerManager，而是建立完全独立的服务器进程，通过 HTTP 通信进行交互。
 
-2. **替换原有 Engine 对象**：参考下方 HttpServerEngineAdapter 的部分实现，通过将 VerlEngine 内部的 `_engine` 属性替换为 HttpServerEngineAdapter，我们实现了训练和推理服务的解耦。这种设计让训练进程专注于模型更新，而推理服务则独立运行在 HTTP 服务器中，避免了资源竞争和状态同步的复杂性。
+2. **替换原有 Engine 对象**：参考下方 HttpServerEngineAdapter 的部分实现，通过将 VerlEngine 内部的 `_engine` 属性替换为 HttpServerEngineAdapter，我们实现了训练和推理服务的解耦。这种设计让训练进程专注于模型更新，而推理服务则独立运行在 HTTP 服务器中，避免了资源竞争和状态同步的复杂性。【todo，也就是说，HttpServerEngineAdapter 用于参数更新，而 HttpServerEngineAdapter 的 `_engine` 属性用于 rollout，其实我这里还是没懂，如果你保留原有的 _engine，会如何？】
 
 3. **HTTP 请求代替直接调用**：当外部调用 `VerlEngine.update_weights_from_tensor()` 时，内部会通过 HTTP 请求将操作转发到独立的服务器进程，这完全避免了线程间共享资源的问题。
 
@@ -208,7 +208,7 @@ else:
 
 2. **新方案的完全隔离确保稳定**：新方案中，HttpServerEngineAdapter 只是一个代理对象，不包含任何与原 Engine 共享的资源，它通过 HTTP 请求与独立运行的服务器进程通信，服务器进程拥有自己独立的 TokenizerManager 和 SchedulerInfo。
 
-3. **请求转发机制**：在主节点（`tp_rank=0`）上，VerlEngine 会收集所有节点的张量数据，然后通过 HttpServerEngineAdapter 发送 HTTP 请求到服务器。这种 client-server architecture 的设计彻底解决了废案中出现的资源冲突问题，确保了系统的稳定性和可靠性。
+3. **请求转发机制**：在主节点（`tp_rank=0`）上，VerlEngine 会收集所有节点的张量数据，然后通过 HttpServerEngineAdapter 发送 HTTP 请求到服务器。这种 client-server architecture 的设计彻底解决了废案中出现的资源冲突问题，确保了系统的稳定性和可靠性。【todo，简单讲下 client-server architecture 是什么？说下优劣】
 
 <details>
 <summary>VerlEngine 中的 update_weights_from_tensor</summary>
@@ -226,7 +226,7 @@ if self._tp_rank == 0:  # 只有主节点发送 HTTP 请求
 
 ### 为什么我们不采用 `update_weights_from_distributed` 来更新 Server 参数
 
-在SGLang中，更新服务器参数有两种主要方法：`update_weights_from_distributed`和`update_weights_from_tensor`，它们的核心区别在于通信机制。`update_weights_from_distributed`依赖NCCL（NVIDIA Collective Communications Library）进行高效的GPU间直接通信，而`update_weights_from_tensor`则通过HTTP请求传输参数状态信息。虽然前者在纯分布式训练场景中通常具有更高的效率，但在我们的应用场景中，后者更为适合。
+在SGLang中，更新服务器参数有两种主要方法：`update_weights_from_distributed`和`update_weights_from_tensor`，它们的核心区别在于通信机制。`update_weights_from_distributed`依赖 NCCL（NVIDIA Collective Communications Library）进行高效的 GPU 间直接通信，而 `update_weights_from_tensor` 则通过HTTP请求传输参数状态信息。【todo，实际上是 meta data 通过 https 传输，但是 tensor 还是通过 nccl 走的吧？】虽然前者在纯分布式训练场景中通常具有更高的效率，但在我们的应用场景中，后者更为适合。
 
 尽管 NCCL 通信在多数场景下具备极高的性能，我们在本版本的实现中依然选择不使用 `update_weights_from_distributed`，而是通过 `update_weights_from_tensor` 接口来完成 Server 参数的更新。主要原因如下：
 
