@@ -1,8 +1,18 @@
-# veRL Server：基于 HTTP Server 的 rollout 接口
+# SGLang-veRL Server：从 Engine 到 Server，我们需要更灵活的 RLHF rollout 接口
 
-【disclaim】这篇文章是 yitianlian 参与 SGLang RL 的工作成果，全程有 jhinpan 和 fzyzcjy 的合作，最后 zhaochenyang20 完成了 review，感谢每位参与者的贡献。
+## 序言
 
-为了配合 agentic LLM 的训练，在现有的 PPO/GRPO 算法的基础上，从 single turn rollout 改动为 environment interactive multi-turn rollout 是非常自然的选择。这一过程中，environment 交互存在绝对不可忽视的延迟，导致 turn 之间的等待时间很长。一直用 Engine 做 rollout 的话（`engine.generate`），可能连 continuous batching 都组不起来。所以，改用 server 来通过 https 做 rollout 的需求就呼之欲出了。实际上，这也是 SGLang 最自然的工作方式。除此之外，environment 的交互往往也是通过 https 请求来完成的。譬如，众多 coding sandbox 都是 environment 自己启动一个 server 暴露一个 port，然后往里面发请求来实现交互的。
+这篇文章是 yitianlian 参与 SGLang RL 的工作成果，全程有 jhinpan 和 fzyzcjy 的合作，最后 zhaochenyang20 完成了 review，感谢每位参与者的贡献。
+
+说来惭愧，大概一个半月前，jin 和我为了支持 [openR1 项目](https://github.com/huggingface/open-r1)，我们拉上秋江、jinwei、晓彤还有 xuting 一块儿给 HuggingFace 的三个子项目都加入了 SGLang 支持。蒸馏上，我们支持了 [distilabel](https://github.com/argilla-io/distilabel)，测评上，我们支持了 [lighteval](https://github.com/huggingface/lighteval/blob/main/docs/source/use-sglang-as-backend.mdx)。最后，在训练引擎上，我们支持了 trl 的 [grpo](https://github.com/huggingface/trl/pull/2981)。全线支持 open-r1 的工作真是非常辛苦，但是也算是圆满告成。唯独遗憾的是，trl 耽误了很长时间。一开始，jin 写了一个启动  [SGLang Sever](https://docs.sglang.ai/backend/send_request.html) 的版本，然后我反驳到，大家都用 [Engine](https://docs.sglang.ai/backend/offline_engine_api.html)，为什么我们要用 Server？我当时并没有尊重他的意见和劳动，直接武断地认为我们要和社区保持一致，所以否决了用 Server 的方法。这个其实毫无道理的决策耽误了他两周的工作时间，最后我们确实成功在 trl 上支持了 SGLang engine，但是现在 HuggingFace accelerate 意识到了他们的一些问题，还是没把我们的 PR merge 进去。
+
+虽然确实耽误了 jin 很长时间，但是功不唐捐。现在他已经是我的强大合作者（还有债主了，苦笑）。从中，我还学到一个问题，**即便是看上去非常复杂高深的系统，很多细节的设计也有可能是社区开发者们在早期拍拍脑袋就决定了的。如果我觉得什么设计很奇怪，就应该认真想想，而不是“大家都这么做，我们也得这样”。** 对于 rollout 这件事情，只是因为大家用 Engine 用的顺手，所以开源的 RLHF 框架几乎都用了 Engine 来做 rollout。长远来看，为了和 environment 的交互和 rollout 的灵活性，我们确实需要 Sever 作为一个更灵活的接口。
+
+## 为什么需要 Server 来完成 rollout
+
+为了配合 agentic LLM 的训练，在现有的 PPO/GRPO 算法的基础上，从 single turn rollout 改动为 environment interactive multi-turn rollout 的需求非常强烈。
+
+这一过程中，policy 与 environment 的交互存在绝对不可忽视的延迟，turn 之间的等待时间很长。一直用 Engine 做 rollout 的话（`engine.generate`），可能连 continuous batching 都组不起来。所以，改用 server 来通过 https 做 rollout 的需求就呼之欲出了。实际上，这也是 SGLang 最自然的工作方式。除此之外，environment 的交互往往也是通过 https 请求来完成的。譬如，众多 coding sandbox 都是 environment 自己启动一个 server 暴露一个 port，然后往里面发请求来实现交互的。
 
 总之，为了在 training engine，rollout 和 environment 三个子进程中保持良好的通讯和交互，选择 server 势在必行。
 
@@ -152,11 +162,11 @@ class VerlEngine:
 1. 线程安全问题：
     - TokenizerManager 可能不是线程安全的，当同时被多个线程访问时会导致竞争条件。
 
-2. IPC通道干扰：
+2. IPC 通道干扰：
     - Server 线程（FastAPI/Uvicorn）创建的事件循环与主线程的 ZMQ 通信通道产生相互干扰。
     - 这会导致 pipe 的一端被意外关闭，正如上文提到的 `BrokenPipeError: [Errno32] Broken Pipe` 这个报错。
 
-3. GIL限制下的阻塞：
+3. GIL 限制下的阻塞：
     - Python 的 GIL（全局解释器锁）在处理 I/O 密集型任务时，线程切换不及时。
     - 当 Server 线程长时间占用 GIL，会导致 TokenizerManager 无法及时响应 ZMQ 消息。
 
@@ -226,7 +236,7 @@ if self._tp_rank == 0:  # 只有主节点发送 HTTP 请求
 
 ### 为什么我们不采用 `update_weights_from_distributed` 来更新 Server 参数
 
-在SGLang中，更新服务器参数有两种主要方法：`update_weights_from_distributed`和`update_weights_from_tensor`，它们的核心区别在于通信机制。`update_weights_from_distributed`依赖 NCCL（NVIDIA Collective Communications Library）进行高效的 GPU 间直接通信，而 `update_weights_from_tensor` 则通过HTTP请求传输参数状态信息。实际上，在 `update_weights_from_tensor` 方法中，meta data（如 Tensor Shape 、Data Type 和 Layout Info ）通过 HTTPS 传输，而实际的大规模 tensor 数据仍然通过高效的 NCCL 通道传输，这保证了数据传输的效率。虽然前者在纯分布式训练场景中通常具有更高的效率，但在我们的应用场景中，后者更为适合。
+在 SGLang 中，更新服务器参数有两种主要方法：`update_weights_from_distributed` 和 `update_weights_from_tensor`，它们的核心区别在于通信机制。`update_weights_from_distributed` 依赖 NCCL（NVIDIA Collective Communications Library）进行高效的 GPU 间直接通信，而 `update_weights_from_tensor` 则通过 HTTP 请求传输参数状态信息。实际上，在 `update_weights_from_tensor` 方法中，meta data（如 Tensor Shape 、Data Type 和 Layout Info ）通过 HTTPS 传输，而实际的大规模 tensor 数据仍然通过高效的 NCCL 通道传输，这保证了数据传输的效率。虽然前者在纯分布式训练场景中通常具有更高的效率，但在我们的应用场景中，后者更为适合。
 
 尽管 NCCL 通信在多数场景下具备极高的性能，我们在本版本的实现中依然选择不使用 `update_weights_from_distributed`，而是通过 `update_weights_from_tensor` 接口来完成 Server 参数的更新。主要原因如下：
 
