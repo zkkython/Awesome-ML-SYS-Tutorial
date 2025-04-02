@@ -248,8 +248,8 @@ if self._tp_rank == 0:  # 只有主节点发送 HTTP 请求
 2. **数据拷贝由系统显式处理**  
    即使传入的是 CPU 上的 Tensor，系统也会在接收端显式地将其复制到 GPU 上对应的模型参数位置。因此，不存在 NCCL 传输的需求，也无需担心 GPU 指针跨进程传递的问题。
 
-3. **`update_weights_from_distributed` 与 Verl 框架存在设计冲突**  
-   当前 `update_weights_from_distributed` 的实现依赖 NCCL 通信，但 NCCL 不支持在同一张卡上同时作为发送方和接收方，这与 Verl 的资源调度方式（Training 与 Inference 共用资源池）存在冲突，容易引发端口复用问题，进而导致通信失败。
+3. **`update_weights_from_distributed` 与 VeRL 框架存在设计冲突**  
+   当前 `update_weights_from_distributed` 的实现依赖 NCCL 通信，但 NCCL 不支持在同一张卡上同时作为发送方和接收方，这与 VeRL 的资源调度方式（Training 与 Inference 共用资源池）存在冲突，容易引发端口复用问题，进而导致通信失败。
 
 综上所述，`update_weights_from_tensor` 在兼容性、稳定性和实现灵活性方面更符合我们当前的部署需求。
 
