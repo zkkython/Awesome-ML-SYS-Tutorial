@@ -175,7 +175,9 @@ class VerlEngine:
 
 ## 实际实现
 
-鉴于在设计思路一中出现的问题，我们采用了一种完全不同的架构方案——完全分离 HTTP 服务器与 VerlEngine，避免任何资源共享和并发访问冲突。为此，我们引入了 `HttpServerEngineAdapter` 作为替代方案，该方案的关键点是：
+鉴于在设计思路一中出现的问题，我们采用了一种完全不同的架构方案——完全分离 HTTP 服务器与 Engine，避免任何资源共享和并发访问冲突。具体来说，设计思路一中我们在 VerlEngine 的 _engine 层面上进行了复用，而 _engine 的类型实际上是 Engine。
+因此，为了解决设计思路一存在的问题，我们将 Engine 和 HTTP 服务完全解耦，使它们成为两个相互独立且同级的类。
+为此，我们引入了 `HttpServerEngineAdapter` 作为替代方案，该方案的关键点是：
 
 1. **完全分离而非共享资源**：与废案不同，我们放弃了资源复用的想法，不再尝试在同一进程的不同线程中共享 TokenizerManager，而是建立完全独立的服务器进程，通过 HTTP 通信进行交互。
 
@@ -236,20 +238,22 @@ if self._tp_rank == 0:  # 只有主节点发送 HTTP 请求
 
 ### 为什么我们不采用 `update_weights_from_distributed` 来更新 Server 参数
 
-在 SGLang 中，更新服务器参数有两种主要方法：`update_weights_from_distributed` 和 `update_weights_from_tensor`，它们的核心区别在于通信机制。`update_weights_from_distributed` 依赖 NCCL（NVIDIA Collective Communications Library）进行高效的 GPU 间直接通信，而 `update_weights_from_tensor` 则通过 HTTP 请求传输参数状态信息。实际上，在 `update_weights_from_tensor` 方法中，meta data（如 Tensor Shape 、Data Type 和 Layout Info ）通过 HTTPS 传输，而实际的大规模 tensor 数据仍然通过高效的 NCCL 通道传输，这保证了数据传输的效率。虽然前者在纯分布式训练场景中通常具有更高的效率，但在我们的应用场景中，后者更为适合。
+在 SGLang 中，更新服务器参数有两种主要方法：`update_weights_from_distributed` 和 `update_weights_from_tensor`，它们的核心区别在于适用场景与通信方式。
 
-尽管 NCCL 通信在多数场景下具备极高的性能，我们在本版本的实现中依然选择不使用 `update_weights_from_distributed`，而是通过 `update_weights_from_tensor` 接口来完成 Server 参数的更新。主要原因如下：
+`update_weights_from_distributed` 依赖 NCCL（NVIDIA Collective Communications Library）进行高效的 GPU 间通信，适用于全量分布式训练场景。而 `update_weights_from_tensor` 的设计初衷是为了支持同节点、跨进程的权重更新操作，尤其适用于如 VerlEngine 这类部署 HybridEngine 的推理场景。该方法通过将 CPU 或 GPU 上的 Tensor 通过进程间共享机制传入，接收端再将其复制到模型参数中。**实际的数据传输不依赖 NCCL，而是基于指针传递 + 显式拷贝的方式完成。**因此，并不存在 “通过 HTTP 或 NCCL 传输 tensor 数据” 的过程。
 
-1. **兼容 VerlEngine 现有逻辑**
-   为了与当前 VerlEngine 的实现保持完全兼容，我们需采用 `update_weights_from_tensor` 接口进行参数更新。这一方式可以无缝对接现有的框架，避免对主逻辑产生不必要的干扰。
+我们在本版本中选择使用 `update_weights_from_tensor`，主要基于以下几点考虑：
 
-2. **HTTP 传输性能无需担忧**
-   起初我们担心通过 HTTP 传输 tensor 会成为性能瓶颈。但据与 fzyzcjy 的沟通确认，`update_weights_from_tensor` 实际上传输的仅为 meta data，而非完整 tensor 数据。实际的 tensor 数据是通过 NCCL 在分布式节点间直接传输的，HTTP 请求只用于同步模型参数的状态信息。因此，该方式在性能上也能满足需求，传输效率并不构成实际障碍。
+1. **兼容 VerlEngine 现有逻辑**  
+   为了与当前 VerlEngine 的实现保持完全兼容，我们需采用 `update_weights_from_tensor` 接口进行参数更新。这一方式可支持在同一节点内不同进程间完成模型权重同步，避免对现有推理逻辑的干扰。
 
-3. **`update_weights_from_distributed` 与 Verl 框架存在设计冲突**
-   当前 `update_weights_from_distributed` 的实现逻辑是：在 rank 0 上保存模型参数，并通过 TCP 将参数广播至其他 ranks（如 rank 1、rank 2）。然而，在 Verl 框架中，HybridEngine 会将 training 与 inference 部署在同一资源池上。这就导致同一个 rank 的同一个端口需同时承担发送与接收任务，进而产生端口冲突。因此，该方法与 VerlEngine 的资源调度方式不兼容，无法直接采用。
+2. **数据拷贝由系统显式处理**  
+   即使传入的是 CPU 上的 Tensor，系统也会在接收端显式地将其复制到 GPU 上对应的模型参数位置。因此，不存在 NCCL 传输的需求，也无需担心 GPU 指针跨进程传递的问题。
 
-综上，`update_weights_from_tensor` 在兼容性、性能和设计合理性方面均更符合当前实现的需求，因此我们选择了这一方案。
+3. **`update_weights_from_distributed` 与 VeRL 框架存在设计冲突**  
+   当前 `update_weights_from_distributed` 的实现依赖 NCCL 通信，但 NCCL 不支持在同一张卡上同时作为发送方和接收方，这与 VeRL 的资源调度方式（Training 与 Inference 共用资源池）存在冲突，容易引发端口复用问题，进而导致通信失败。
+
+综上所述，`update_weights_from_tensor` 在兼容性、稳定性和实现灵活性方面更符合我们当前的部署需求。
 
 ## 最终效果测试
 
