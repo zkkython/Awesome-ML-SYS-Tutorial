@@ -378,3 +378,23 @@ ulimit soft: 524288
  torchrun --nnodes=1 --nproc_per_node=4 --master_addr=<NODE0 IP> --master_port=34567 torchrun_verlengine.py
  ```
 </details>
+
+- [ ] `[torch_memory_saver.cpp] CUresult error  result=2 file=csrc/torch_memory_saver.cpp func=cu_mem_create line=103` (**5**)
+
+```bash
+ValueError: TP rank 0 could finish the model loading, but there are other ranks that didn't finish loading. It is likely due to unexpected failures (e.g., OOM) or a slow node
+```
+
+ 1. 将`torchrun_verlengine.py`中`== Parallel ==`部分改为
+```
+dp, tp, pp = 1, 8, 1
+device_count = 8
+model_name = "moonshotai/Moonlight-16B-A3B-Instruct"
+```
+
+ 2.运行下面的命令
+ ```bash
+ torchrun --nnodes=1 --nproc_per_node=8 --master_addr=<NODE0 IP> --master_port=34567 torchrun_verlengine.py
+ ```
+
+测试使用的月暗家用了deepseekV3结构的小模型，看起来memory saver和deepseekV3结构存在一定冲突，当前优先级最高的事项
