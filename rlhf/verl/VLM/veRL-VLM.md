@@ -141,8 +141,3 @@ python3 -m verl.trainer.main_ppo \
 # 注意，跑的是 qwen 2.5 的，不是 qwen2 的，别把文件弄混了
 bash examples/grpo_trainer/run_qwen2_5_vl-7b.sh sglang
 ```
-
-目前情况：
-- 报错，log如下
-  <img width="1164" alt="Image" src="https://github.com/user-attachments/assets/54c863c1-fb26-452f-9718-f17da3a1dfe3" />
-- 在 val 的结果距离vllm 有差距（0.37 vs 0.40），应该是 verl 的 evalute 有问题，要对着 sglang 在没有训练之前拉通 evaluate 结果。
