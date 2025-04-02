@@ -12,7 +12,7 @@
 
 为了配合 agentic LLM 的训练，在现有的 PPO/GRPO 算法的基础上，从 single turn rollout 改动为 environment interactive multi-turn rollout 的需求非常强烈。
 
-这一过程中，policy 与 environment 的交互存在绝对不可忽视的延迟，turn 之间的等待时间很长。一直用 Engine 做 rollout 的话（`engine.generate`），可能连 continuous batching 都组不起来。所以，改用 server 来通过 https 做 rollout 的需求就呼之欲出了。实际上，这也是 SGLang 最自然的工作方式。除此之外，environment 的交互往往也是通过 https 请求来完成的。譬如，众多 coding sandbox 都是 environment 自己启动一个 server 暴露一个 port，然后往里面发请求来实现交互的。
+这一过程中，policy 与 environment 的交互存在绝对不可忽视的延迟，turn 之间的等待时间很长。一直用 `Engine` 做 rollout 的话（`engine.generate`），可能连 continuous batching 都组不起来。所以，改用 server 来通过 https 做 rollout 的需求就呼之欲出了。实际上，这也是 SGLang 最自然的工作方式。除此之外，environment 的交互往往也是通过 https 请求来完成的。譬如，众多 coding sandbox 都是 environment 自己启动一个 server 暴露一个 port，然后往里面发请求来实现交互的。
 
 总之，为了在 training engine，rollout 和 environment 三个子进程中保持良好的通讯和交互，选择 server 势在必行。
 
@@ -175,9 +175,7 @@ class VerlEngine:
 
 ## 实际实现
 
-鉴于在设计思路一中出现的问题，我们采用了一种完全不同的架构方案——完全分离 HTTP 服务器与 Engine，避免任何资源共享和并发访问冲突。具体来说，设计思路一中我们在 VerlEngine 的 _engine 层面上进行了复用，而 _engine 的类型实际上是 Engine。
-因此，为了解决设计思路一存在的问题，我们将 Engine 和 HTTP 服务完全解耦，使它们成为两个相互独立且同级的类。
-为此，我们引入了 `HttpServerEngineAdapter` 作为替代方案，该方案的关键点是：
+鉴于在设计思路一中出现的问题，我们采用了一种完全不同的架构方案——完全分离 HTTP 服务器与 Engine，避免任何资源共享和并发访问冲突。具体来说，在废案中，我们在 `VerlEngine` 的 `_engine` 层面上进行了复用，而 `_engine` 的类型实际上是 `Engine`。在实际执行的方案中，我们将 `Engine` 和 `HTTP 服务` 完全解耦，使它们成为两个相互独立且同级的类。我们引入了 `HttpServerEngineAdapter` 作为替代方案，该方案的关键点是：
 
 1. **完全分离而非共享资源**：与废案不同，我们放弃了资源复用的想法，不再尝试在同一进程的不同线程中共享 TokenizerManager，而是建立完全独立的服务器进程，通过 HTTP 通信进行交互。
 
@@ -186,7 +184,7 @@ class VerlEngine:
 3. **HTTP 请求代替直接调用**：当外部调用 `VerlEngine.update_weights_from_tensor()` 时，内部会通过 HTTP 请求将操作转发到独立的服务器进程，这完全避免了线程间共享资源的问题。
 
 <details>
-<summary>HttpServerEngineAdapter</summary>
+<summary>HttpServerEngineAdapter 的实现</summary>
 
 ```python
 if first_rank_in_node and "launch_server" not in kwargs:
@@ -216,11 +214,11 @@ else:
 
 ### 与废案的核心区别
 
-1. **废案的资源共享导致冲突**：废案中，一个 TokenizerManager 被两个线程同时访问：`_engine` 线程和 `server_from_verl_engine` 线程，由于 TokenizerManager 不是线程安全的，导致通信混乱。
+1. **废案的资源共享导致冲突**：废案中，`TokenizerManager` 被两个线程同时访问：`_engine` 线程和 `server_from_verl_engine` 线程，由于 `TokenizerManager` 不是线程安全的，导致通信混乱。
 
-2. **新方案的完全隔离确保稳定**：新方案中，HttpServerEngineAdapter 只是一个代理对象，不包含任何与原 Engine 共享的资源，它通过 HTTP 请求与独立运行的服务器进程通信，服务器进程拥有自己独立的 TokenizerManager 和 SchedulerInfo。
+2. **新方案的完全隔离确保稳定**：新方案中，`HttpServerEngineAdapter` 只是一个代理对象，不包含任何与原 `Engine` 共享的资源，它通过 HTTP 请求与独立运行的服务器进程通信，服务器进程拥有自己独立的 `TokenizerManager` 和 `SchedulerInfo`。
 
-3. **请求转发机制**：在主节点（`tp_rank=0`）上，VerlEngine 会收集所有节点的张量数据，然后通过 HttpServerEngineAdapter 发送 HTTP 请求到服务器。这种 client-server architecture 的设计彻底解决了废案中出现的资源冲突问题，确保了系统的稳定性和可靠性。Client-Server architecture 是一种将系统功能分为服务提供方（ Server ）和服务消费方（ Client ）的 distributed architecture。其优点包括职责明确分离、易于扩展、资源隔离和更强的故障隔离能力；缺点则是引入额外的网络通信开销、可能增加系统响应延迟以及需要处理网络故障的容错机制。在我们的场景中，这种架构的优势远大于其缺点。
+3. **请求转发机制**：在主节点（`tp_rank=0`）上，`VerlEngine` 会收集所有节点的张量数据，然后通过 `HttpServerEngineAdapter` 发送 HTTP 请求到服务器。这种 client-server architecture 的设计解决了废案中出现的资源冲突问题，确保了系统的稳定性和可靠性。Client-Server architecture 是一种将系统功能分为服务提供方（Server）和服务消费方（Client）的 distributed architecture。其优点包括职责明确分离、易于扩展、资源隔离和更强的故障隔离能力；缺点则是引入额外的网络通信开销、可能增加系统响应延迟以及需要处理网络故障的容错机制。
 
 <details>
 <summary>VerlEngine 中的 update_weights_from_tensor</summary>
@@ -240,18 +238,20 @@ if self._tp_rank == 0:  # 只有主节点发送 HTTP 请求
 
 在 SGLang 中，更新服务器参数有两种主要方法：`update_weights_from_distributed` 和 `update_weights_from_tensor`，它们的核心区别在于适用场景与通信方式。
 
-`update_weights_from_distributed` 依赖 NCCL（NVIDIA Collective Communications Library）进行高效的 GPU 间通信，适用于全量分布式训练场景。而 `update_weights_from_tensor` 的设计初衷是为了支持同节点、跨进程的权重更新操作，尤其适用于如 VerlEngine 这类部署 HybridEngine 的推理场景。该方法通过将 CPU 或 GPU 上的 Tensor 通过进程间共享机制传入，接收端再将其复制到模型参数中。**实际的数据传输不依赖 NCCL，而是基于指针传递 + 显式拷贝的方式完成。**因此，并不存在 “通过 HTTP 或 NCCL 传输 tensor 数据” 的过程。
+`update_weights_from_distributed` 依赖 NCCL（NVIDIA Collective Communications Library）进行高效的 GPU 间通信，适用于全量分布式训练场景。
+而 `update_weights_from_tensor` 的设计初衷是为了支持同节点、跨进程的权重更新操作，尤其适用于如 VerlEngine 这类部署 HybridEngine 的推理场景。
+`update_weights_from_tensor` 实际上是直接在 CPU 或 GPU 之间通过进程间共享机制传递 Tensor 的，接收端直接将其复制到模型参数中。
+**实际的数据传递不依赖 NCCL，而是基于指针传递 + 显式拷贝的方式完成。** 因此，`update_weights_from_tensor` 并不存在“通过 HTTP 或 NCCL 传输 tensor 数据”的过程。
+如此以来，update weights 过程中，参数不会通过 HTTP 传输，我们从 veRL Engine 切换到 veRL Server 后，只会增加 meta data 的传输开销，不用担心参数传递的额外开销。
+这点 meta data 的传输开销相比起 server 带来的编程灵活性，我们完全可以接受。
 
-我们在本版本中选择使用 `update_weights_from_tensor`，主要基于以下几点考虑：
+最终，我们在本版本中选择使用 `update_weights_from_tensor`，这有如下好处：
 
-1. **兼容 VerlEngine 现有逻辑**  
-   为了与当前 VerlEngine 的实现保持完全兼容，我们需采用 `update_weights_from_tensor` 接口进行参数更新。这一方式可支持在同一节点内不同进程间完成模型权重同步，避免对现有推理逻辑的干扰。
+1. **兼容 VerlEngine 现有逻辑**  ：直接在同一节点内的不同进程间完成模型权重同步，避免对现有推理逻辑的干扰。
 
-2. **数据拷贝由系统显式处理**  
-   即使传入的是 CPU 上的 Tensor，系统也会在接收端显式地将其复制到 GPU 上对应的模型参数位置。因此，不存在 NCCL 传输的需求，也无需担心 GPU 指针跨进程传递的问题。
+2. **数据拷贝由系统显式处理** ：即使传入的是 CPU 上的 Tensor，系统也会在接收端显式地将其复制到 GPU 上对应的模型参数位置。因此，不存在 NCCL 传输的需求，也无需担心 GPU 指针跨进程传递的问题。
 
-3. **`update_weights_from_distributed` 与 VeRL 框架存在设计冲突**  
-   当前 `update_weights_from_distributed` 的实现依赖 NCCL 通信，但 NCCL 不支持在同一张卡上同时作为发送方和接收方，这与 VeRL 的资源调度方式（Training 与 Inference 共用资源池）存在冲突，容易引发端口复用问题，进而导致通信失败。
+3. **`update_weights_from_distributed` 与 VeRL 框架存在设计冲突** ：当前 `update_weights_from_distributed` 的实现依赖 NCCL 在不同的 placement group 之间进行通讯，但 VeRL 的资源调度主要是 hybrid 的，也即 training 与 Inference 共用 placement group。如何在同一 placement group 上同时利用 NCCL 进行发送和接收还有待研究。
 
 综上所述，`update_weights_from_tensor` 在兼容性、稳定性和实现灵活性方面更符合我们当前的部署需求。
 
