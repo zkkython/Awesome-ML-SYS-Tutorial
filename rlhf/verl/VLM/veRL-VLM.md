@@ -52,7 +52,7 @@ python3 -m pip install --upgrade uv
 cd ~
 git clone https://github.com/volcengine/verl.git
 cd verl
-python3 -m uv pip install -e ".[sglang]"
+python3 -m uv pip install -e ".[sglang,geo]"
 python3 -m uv pip install -r ./requirements.txt
 ```
 
