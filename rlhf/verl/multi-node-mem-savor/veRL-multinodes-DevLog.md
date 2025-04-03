@@ -19,17 +19,22 @@ docker exec -it {YOUR CONTAINER NAME} /bin/zsh
 ```bash
 apt install python3.10-venv
 
+# 创建 venv
+python3 -m venv .venv --upgrade-deps
+source .venv/bin/activate
+pip install build wheel
+
+# 安装 SGlang
+git clone -b v0.4.4.post3 https://github.com/sgl-project/sglang.git
+cd sglang
+pip install --upgrade pip
+pip install -e "python[all]" --find-links https://flashinfer.ai/whl/cu124/torch2.5/flashinfer-python
+
+# 安装 verl
+cd ..
 git clone https://github.com/ocss884/verl.git verl-sglang
 cd verl-sglang
 git switch sglang_multinode
-python3 -m venv .venv --upgrade-deps
-source .venv/bin/activate
-
-# 在 venv 中需要补充安装的依赖
-pip install torch torchvision torchaudio build wheel
-
-# 安装 verl
-pip install ".[sglang]"
 pip install ".[gpu]"
 ```
 
