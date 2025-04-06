@@ -72,3 +72,15 @@ Long-CoT 模型的推理开销显著更大，作者指出了多种可以将 Long
 
 1. 显然，partial rollout 会破坏 on-policy 属性。很有可能一个 request 再被用于训练时，decode 出来的部分会分 chunk 来自不同的 iteration。比如 0～64k 来自 iteration t-2 ，64k～96k 来自 iteration t-1，而从 96k 开始到结束，才真正来自 iteration t。这在理论上能够证明有相近的效果么？
 2. 没有 decode 结束的 request 会被 cache 下来，但是下一轮显然会加入新的 request。前一轮的 request 已经有相当一部分被 cache 下来，这些新的 request 需要 decode 的量为了达到同样的 sample range，显然是更多的，这样是不是就造就了新的 load unbalance 呢？
+
+### RL framework
+
+作者搭建了基于 megatron 和 vllm 的大规模 RL 系统。在这种工业级实践中，他们关注的和我们确实区别很大。比如，他们会关注 rollout stage 和 training stage 之间的启动间隔，从训练到 rollout 需要 1min，反过来需要 10s。此外，还涉及到了我从没考虑过的变量——checkpoint engine。简单来说，随着 rollout 的逐步进行，需要的 trajactoris length 越长，rollout engine 开始设置的 context length 可能就不够大了。目前的做法是反复 kill and relaunch 新的 rollout engine，这需要存下 ckpt 并且尽可能降低重启的开销。
+
+在 code 执行方面，他们采用了 crun 而不是 dokcer，效率直观上快了很多。
+
+## Ablation
+
+- 大模型短推理和小模型长推理：小模型可以用长推理来比肩大模型，但是总体上，大模型的 token efficiency 是更好的。large model with short context 和 small model with long context 目前是效果一致的方案。
+- 与 ReST 的方法相反，在训练中引入 negative gradient 能够显著增强模型生成 long cot 的效率。
+- 课程学习（由易到难学习）带来了显著的提升。
