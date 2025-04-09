@@ -21,9 +21,8 @@ python3 -m pip install --upgrade uv
 
 ```bash
 cd ~
-git clone https://github.com/ocss884/verl verl-sglang
+git clone https://github.com/volcengine/verl verl-sglang
 cd verl-sglang
-git checkout dev_sglang
 git pull --no-ff
 python3 -m uv pip install .
 ```
