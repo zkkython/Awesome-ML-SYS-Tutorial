@@ -305,8 +305,8 @@ class MultiprocessingSerializer:
 
 ### 多节点场景支持
 
-为了更好地支持多节点部署，可以添加节点感知功能：
-伪代码当前如下，但是后续host应该要换成ip：
+为了更好地支持多节点部署，可以添加节点感知功能。伪代码当前如下，但是后续 host 应该要换成 ip：
+
 <details>
 <summary>Multi-nodes 的探讨</summary>
 
