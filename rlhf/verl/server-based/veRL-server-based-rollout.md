@@ -249,11 +249,90 @@ if self._tp_rank == 0:  # 只有主节点发送 HTTP 请求
 
 1. **兼容 VerlEngine 现有逻辑**  ：直接在同一节点内的不同进程间完成模型权重同步，避免对现有推理逻辑的干扰。
 
-2. **数据拷贝由系统显式处理** ：即使传入的是 CPU 上的 Tensor，系统也会在接收端显式地将其复制到 GPU 上对应的模型参数位置。因此，不存在 NCCL 传输的需求，也无需担心 GPU 指针跨进程传递的问题。
+2. **数据拷贝由系统显式处理** ：我们在 `update_weights_from_tensor` 中传入的是 tensor 所对应的指针位置，因此由于 Server 中的 model 是在 GPU 上，所传输的 tensor 也必须要放在 gpu 上（ CPU 同理）。因此，不存在 NCCL 传输的需求，也无需担心 GPU 指针跨进程传递的问题。这里如何跨设备传输需要后续研究。
 
 3. **`update_weights_from_distributed` 与 VeRL 框架存在设计冲突** ：当前 `update_weights_from_distributed` 的实现依赖 NCCL 在不同的 placement group 之间进行通讯，但 VeRL 的资源调度主要是 hybrid 的，也即 training 与 Inference 共用 placement group。如何在同一 placement group 上同时利用 NCCL 进行发送和接收还有待研究。
 
 综上所述，`update_weights_from_tensor` 在兼容性、稳定性和实现灵活性方面更符合我们当前的部署需求。
+
+### 序列化方式
+
+在实现 `update_weights_from_tensor` 时，我们需要通过 HTTP POST 请求传递参数。然而，由于无法直接将自定义的 `UpdateWeightsFromTensorReqInput` 类作为参数传递，因此需要对其进行序列化处理。
+
+在早期的实现中，我们采用了 `pickle` 加上 `base64` 的方式对整个类进行打包。这种方式虽然可行，但存在一些问题：首先，它显得不够自然，与常见的序列化习惯不符；其次，使用 `pickle` 在这种场景下并非必要，且可能带来额外的复杂性和潜在的安全风险。
+
+在最新版本的实现中，我们对 `MultiprocessingSerializer` 进行了功能扩展。当需要通过 HTTP 传输数据时，我们会将字节类型的数据（`byte`）通过 `base64` 编码为字符串（`str`），以便能够顺利通过 HTTP POST 请求进行传输。而在反序列化时，如果检测到输入的数据类型是字符串，则会先使用 `b64decode` 将其解码回字节类型，然后再交由 `MultiprocessingSerializer` 原有的处理逻辑继续处理。
+
+通过这一改进，我们不仅简化了 `update_weights_from_tensor` 的代码逻辑复用，还使整个流程更加规范、清晰且易于理解。新的实现方式避免了不必要的依赖（如 `pickle`），同时更符合常见的开发习惯，提升了代码的可读性和可维护性。
+
+伪代码如下：
+<details>
+<summary>MultiprocessingSerializer 的扩展</summary>
+
+```python
+class MultiprocessingSerializer:
+    @staticmethod
+    def serialize(obj, output_str: bool = False):
+        """序列化对象
+
+        Args:
+            obj: 需要序列化的对象
+            output_str: 是否返回字符串表示（base64编码）
+                        当序列化数据需要通过JSON传输时非常有用
+        """
+        # 原有序列化逻辑
+        output = 原有序列化输出
+
+        # 新增：支持字符串输出
+        if output_str:
+            return base64.b64encode(output).decode('utf-8')
+        return output
+
+    @staticmethod
+    def deserialize(data, 其他参数):
+        """反序列化对象
+
+        Args:
+            data: 序列化的数据（bytes或base64编码的字符串）
+        """
+        # 新增：自动检测并处理字符串输入
+        if isinstance(data, str):
+            data = base64.b64decode(data.encode('utf-8'))
+
+        # 原有反序列化逻辑
+```
+</details>
+
+### 多节点场景支持
+
+为了更好地支持多节点部署，可以添加节点感知功能。伪代码当前如下，但是后续 host 应该要换成 ip：
+
+<details>
+<summary>Multi-nodes 的探讨</summary>
+
+```python
+class HttpServerEngineAdapter:
+    def __init__(self, server_args, node_aware: bool = False):
+        """初始化HTTP服务器引擎适配器
+
+        Args:
+            server_args: 服务器参数
+            node_aware: 是否启用节点感知功能
+        """
+        self.host = server_args.host
+        self.port = server_args.port
+        self.node_aware = node_aware
+
+        # 如果启用节点感知，收集所有可用节点信息
+        if node_aware:
+            self.nodes_info = self._discover_nodes()
+
+    def _discover_nodes(self):
+        """发现并记录集群中的所有节点"""
+        # 节点发现逻辑
+        pass
+```
+</details>
 
 ## 最终效果测试
 
