@@ -265,6 +265,75 @@ if self._tp_rank == 0:  # 只有主节点发送 HTTP 请求
 
 通过这一改进，我们不仅简化了 `update_weights_from_tensor` 的代码逻辑复用，还使整个流程更加规范、清晰且易于理解。新的实现方式避免了不必要的依赖（如 `pickle`），同时更符合常见的开发习惯，提升了代码的可读性和可维护性。
 
+伪代码如下：
+<details>
+<summary>MultiprocessingSerializer 的扩展</summary>
+
+```python
+class MultiprocessingSerializer:
+    @staticmethod
+    def serialize(obj, output_str: bool = False):
+        """序列化对象
+
+        Args:
+            obj: 需要序列化的对象
+            output_str: 是否返回字符串表示（base64编码）
+                        当序列化数据需要通过JSON传输时非常有用
+        """
+        # 原有序列化逻辑
+        output = 原有序列化输出
+
+        # 新增：支持字符串输出
+        if output_str:
+            return base64.b64encode(output).decode('utf-8')
+        return output
+
+    @staticmethod
+    def deserialize(data, 其他参数):
+        """反序列化对象
+
+        Args:
+            data: 序列化的数据（bytes或base64编码的字符串）
+        """
+        # 新增：自动检测并处理字符串输入
+        if isinstance(data, str):
+            data = base64.b64decode(data.encode('utf-8'))
+
+        # 原有反序列化逻辑
+```
+</details>
+
+### 多节点场景支持
+
+为了更好地支持多节点部署，可以添加节点感知功能：
+伪代码当前如下，但是后续host应该要换成ip：
+<details>
+<summary>Multi-nodes 的探讨</summary>
+
+```python
+class HttpServerEngineAdapter:
+    def __init__(self, server_args, node_aware: bool = False):
+        """初始化HTTP服务器引擎适配器
+
+        Args:
+            server_args: 服务器参数
+            node_aware: 是否启用节点感知功能
+        """
+        self.host = server_args.host
+        self.port = server_args.port
+        self.node_aware = node_aware
+
+        # 如果启用节点感知，收集所有可用节点信息
+        if node_aware:
+            self.nodes_info = self._discover_nodes()
+
+    def _discover_nodes(self):
+        """发现并记录集群中的所有节点"""
+        # 节点发现逻辑
+        pass
+```
+</details>
+
 ## 最终效果测试
 
 启动新的虚拟环境，这里我们不用 docker，但是还是使用 uv。
