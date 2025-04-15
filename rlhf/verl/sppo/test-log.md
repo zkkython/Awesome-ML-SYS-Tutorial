@@ -46,7 +46,7 @@ wandb login
 
 ```bash
 python3 examples/data_preprocess/math_dataset.py --local_dir ~/data/math
-huggingface-cli download Qwen/Qwen2.5-7B-Instruct --local-dir /root/.cache/models/Qwen2.5-7B-Instruct 
+huggingface-cli download Qwen/Qwen2.5-7B-Instruct --local-dir $HOME/models/Qwen2.5-7B-Instruct
 ```
 
 5. run bash (tested on h20x4)
