@@ -20,15 +20,15 @@ RaySPPOTrainer
 
 实现了算法正确性验证（val_score 0.78 -> 0.92），接下来打算使代码架构更为合理。
 
-
+```
 main_sppo -> override trainer fit()
-                 -> fsdp_workers.ActorRolloutRefWorker override init_model() 
-	 -> DataParallelPPOActor override update_policy -
- 	 -> update_policy
+          -> fsdp_workers.ActorRolloutRefWorker override init_model() 
+	  -> DataParallelPPOActor override update_policy -
+ 	  -> update_policy
                  
 	 
 	 -> megatron_workers.ActorRolloutRefWorker needs support ?
-
+```
 
 
 实现过程中困惑的点：
