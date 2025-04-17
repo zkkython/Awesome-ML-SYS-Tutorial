@@ -49,5 +49,8 @@ huggingface-cli download Qwen/Qwen2.5-7B-Instruct --local-dir $HOME/models/Qwen2
 5. run bash (tested on h20x4)
 
 ```bash
-bash recipe/spin/online-dpo.sh
+export CUDA_VISIBLE_DEVICES=0,1,2,3
+cd recipe/spin
+bash online-dpo.sh
 ```
+
