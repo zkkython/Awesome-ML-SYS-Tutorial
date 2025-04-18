@@ -1,5 +1,12 @@
-# VeRL-SGLang dev
+# VeRL-SGLang dev (On AMD GPU)
 
+## CodeBase
+Upstream verl: 
+```bash
+git clone https://github.com/volcengine/verl.git
+cd verl
+git checkout ec59b8788cc16038889b0c35ca4aeb47bcd69093
+```
 
 ## Launch Docker
 ```bash
