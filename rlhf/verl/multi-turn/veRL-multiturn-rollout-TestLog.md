@@ -46,9 +46,7 @@ source ~/.python/veRL-multiturn-rollout/bin/activate
 python3 -m pip install uv
 ```
 
-### clone veRL-multiturn-rollout 并切换到 async-tp 分支
-
-PS：这个分支还是 private 的，需要先我们内部邀请加入，不然就下载下源代码，直接传到 docker 里面。我其实自己在 atals 的 `/.cache` 里面偷偷塞了一个，所以可以直接用：
+### clone 龙老师的分支
 
 ```bash
 cd ~
