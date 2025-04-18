@@ -79,29 +79,12 @@ python3 -m uv pip install packaging
 python3 -m uv pip install flash-attn --no-build-isolation --no-deps
 ```
 
-## 4 卡测试 SGLang
-
-### 使用前需要配置好 `WANDB_API_KEY`
-
-可以参考[这个过程](https://community.wandb.ai/t/where-can-i-find-the-api-token-for-my-project/7914)。
+## 测试 SGLang
 
 ```bash
-export WANDB_API_KEY={YOUR_WANDB_API_KEY}
-
-# 定义这个时间戳函数
-function now() {
-    date '+%Y-%m-%d-%H-%M'
-}
-```
-
-### 运行
-
-```bash
-# First make sure the now() function is available in current shell
-# Create logs directory if it doesn't exist
-mkdir -p logs
+wandb login
 
 # Set GPUs and run with better log organization
 export CUDA_VISIBLE_DEVICES=0,1,2,3
-nohup python3 -m verl.trainer.main_ppo trainer.experiment_name=qwen7b_sft2_$(now) > logs/qwen7b_sft2_$(now).log 2>&1 &
+nohup bash examples/sglang_multiturn/run_qwen2.5-3b_gsm8k_fsdp_multiturn.sh
 ```
