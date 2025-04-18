@@ -2,16 +2,6 @@
 
 ## 环境配置
 
-### 更新 verl-multiturn-rollout 的代码
-
-```bash
-# 在 docker 外面去 git pull 这个 repo，不要在 docker 里面
-#否则你得先获得这个 repo 的权限并且把你的 docker 的 key 加到你的 github 账号里面
-# 才可以直接 pull，但是在 docker 外面，atlas 上用的是我的号在鉴权，可以直接 pull
-cd /.cache/veRL-multiturn-rollout
-git pull
-```
-
 ### 创建新的 docker
 
 ```bash
@@ -62,9 +52,8 @@ PS：这个分支还是 private 的，需要先我们内部邀请加入，不然
 
 ```bash
 cd ~
-cp -r /root/.cache/veRL-multiturn-rollout .
-cd veRL-multiturn-rollout
-git checkout async-tp
+git clone -b feat/add_async_sglang_multi_turn_support https://github.com/SwordFaith/verl.git
+cd verl
 ```
 
 ### 配置 python 环境
@@ -73,7 +62,7 @@ git checkout async-tp
 
 ```bash
 python3 -m uv pip install .
-python3 -m uv pip install -r ./requirements.txt
+python3 -m uv pip install -r ./requirements_sglang.txt
 ```
 
 安装 SGLang：
