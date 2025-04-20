@@ -173,11 +173,11 @@ In the `_prepare_inputs` method, when using vLLM:
 
 - **Detach Generation from Training**
 
-By detaching the generation task to a dedicated GPU (via vLLM), the training GPUs remain fully occupied with gradient computations, thus speeding up training throughput.
+By detaching the generation task to a dedicated GPU placement group, the training GPUs remain fully occupied with gradient computations.
 
 ## Support SGLang in GRPO Trainer
 
-This document describes the modifications we made to support SGLang as an inference backend alongside other inference engines in the GRPOTrainer. Unlike other inference engines—which run as an in-process engine using dedicated classes (e.g. LLM, SamplingParams) and requires patching of distributed methods—SGLang is deployed as a standalone server with HTTP endpoints (compatible with OpenAI's APIs). As a result, our integration leverages HTTP requests to manage weight updates and generate completions.
+Here, we continue working on the modifications we made to support SGLang as an inference backend alongside other inference engines in the GRPOTrainer. Unlike other inference engines—which run as an in-process engine using dedicated classes (e.g. LLM, SamplingParams) and requires patching of distributed methods—SGLang is deployed as a standalone server with HTTP endpoints (compatible with OpenAI's APIs). As a result, our integration leverages HTTP requests to manage weight updates and generate completions.
 
 To substitute other inference engines with **SGLang**, we must account for the differences in API and internal architecture. The following steps outline the necessary modifications:
 
