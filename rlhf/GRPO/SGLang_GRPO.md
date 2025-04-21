@@ -4,9 +4,7 @@ This is the dev-log from SGLang team to support GRPO in [TRL](https://huggingfac
 
 ## How GRPO works
 
-Compared with PPO, GRPO doesn't have the **value/critic model** to estimate total value. The algorithm computes the normalized reward for each output to derive advantages and updates the **reward model** to enhance training performance.
-
-【这里说的 update，是指参数更新么？应该不是吧，所以这里的 update 是什么意思？】
+Compared with PPO, GRPO doesn't have the **value/critic model** to estimate total value. The algorithm computes the normalized reward for each output to derive advantages and updates the **reward model** to enhance training performance. In the context of GRPO, the term "update" refers specifically to the parameter updates of the policy model using gradients computed from the loss function. This means each training iteration adjusts the model's weights to maximize the advantage while maintaining proximity to a reference policy.
 
 GRPO is composed of four steps:
 
@@ -34,7 +32,9 @@ This approach gives the method its name: **Group Relative Policy Optimization (G
 
 Hugging Face uses the above equation to compute advantages. In [GRPO paper](https://arxiv.org/abs/2402.03300), the author named it Outcome Supervision RL with GRPO. The author also found another method named Process Supervision RL with GRPO.
 
-【什么是 Supervision RL？什么是 Process Supervision RL？虽然不是我们这篇短文的重点，但可以贴个 link 啥的。】
+**Supervision Reinforcement Learning (Supervision RL)** combines traditional reinforcement learning with explicit guidance from labeled or structured data during training. It leverages direct supervision to enhance learning efficiency and model performance.
+
+**Process Supervision RL** specifically uses intermediate step-wise rewards rather than evaluating only final outcomes. It provides detailed, step-by-step feedback to the model, thus facilitating fine-grained optimization of policy decisions at every generation step.
 
 We can also leverage the information in each step. Formally, given the question *q* and *G* sampled outputs {$o_1$, $o_2$, … , $o_G$}, a process reward model is R = {{$r_1^{index(1)}$, …, $r_1^{index(K_1)}$}, … , {$r_G^{index(1)}$, …, $r_G^{index(K_G)}$}}, where  $index(K_j)$ is the end token index of $K_j$-th completion.
 
@@ -76,18 +76,6 @@ $$
 $$
 
 where $clip(⋅,1−\epsilon,1+\epsilon)$ ensures that updates stay close to the reference policy by keeping the policy ratio between $1−\epsilon$ and $1+\epsilon$. However, since TRL follows the original paper in performing only one update per generation, we can simplify the loss to the first form.
-
-## Logged metrics
-
-【这段内容毫无问题，但是和上下文有关系么？这里单独拎出来讲蛮奇怪的，可以直接删了】
-
-The GRPO Trainer logs the following metrics:
-
-- `completion_length`: The average completion length.
-- `reward/{reward_func_name}`: The reward computed by each reward function.
-- `reward`: The average reward.
-- `reward_std` : The average standard deviation within reward groups.
-- `kl` : The average KL divergence between the model and the reference model calculated on completions.
 
 ## Customized GRPO
 
@@ -161,7 +149,7 @@ if self.accelerator.is_main_process:
 
 This transfer is key because vLLM is responsible for **generating text**, and its internal model must reflect **the latest training weights**.
 
-【emm，我不理解，这个直接 `llm_model.load_weights(state_dict.items())` 应该只用在第一次 load 模型到 vllm engine 的时候使用吧，之后为了确保 engine 使用 last training weights，应该用的是 update weights from disk？你这段话让我以为所有的 weights update 都是通过这个方法】
+The method `llm_model.load_weights(state_dict.items())` is initially used to load model weights into vLLM during setup. Subsequent updates during training are also done by updating vLLM weights from disk.
 
 - **Generation Workflow**
 
@@ -181,7 +169,15 @@ Here, we continue working on the modifications we made to support SGLang as an i
 
 To substitute other inference engines with **SGLang**, we must account for the differences in API and internal architecture. The following steps outline the necessary modifications:
 
-【TODO】
+- Checkpoint-based Updates:
+
+    - Update the GRPOConfig by adding a checkpoint_path parameter.
+
+    - Write model checkpoints at regular intervals.
+
+    - Use the existing /update_weights_from_disk endpoint provided by the SGLang server.
+
+This approach avoids modifying SGLang’s internal initialization routines and leverages its existing, stable checkpoint-loading capabilities.
 
 ### Import and Availability Check
 
