@@ -58,6 +58,20 @@ python3 -m uv pip install -e ".[sglang,geo]"
 python3 -m uv pip install -r ./requirements.txt
 ```
 
+> 如果遇到这个报错：
+```
+ModuleNotFoundError: No module named 'torch'
+
+hint: This error likely indicates that `flash-attn@2.7.4.post1` depends on `torch`, but doesn't declare it as a build dependency. If
+`flash-attn` is a first-party package, consider adding `torch` to its `build-system.requires`. Otherwise, `uv pip install torch` into the
+environment and re-run with `--no-build-isolation`.
+```
+> 按照下面的步骤 fix
+```
+python3 -m uv pip install wheel
+python3 -m uv pip install -r ./requirements.txt --no-build-isolation
+```
+
 后安装 SGLang，为了对齐 torch 版本。
 
 ```bash
@@ -66,6 +80,10 @@ git clone https://github.com/sgl-project/sglang.git
 cd sglang
 python3 -m uv pip install --upgrade pip
 python3 -m uv pip install -e "python[all]" --find-links https://flashinfer.ai/whl/cu124/torch2.5/flashinfer-python
+```
+额外安装`qwen-vl`依赖：
+```
+uv pip install qwen_vl_utils
 ```
 
 ## 4 卡启动 Qwen2.5VL GRPO 训练脚本，并且使用 SGLang 作为 rollout 引擎
@@ -127,6 +145,9 @@ python3 -m verl.trainer.main_ppo \
     trainer.test_freq=5 \
     trainer.total_epochs=15
 ```
+
+如果遇到了这个报错: `(TaskRunner pid=45593) RuntimeError: No backend type associated with device type cpu`:
+修改:`sglang/python/sglang/srt/utils.py`: `force_cpu_device: bool = True,` -> `False`.
 
 修改结束后，启动 4 卡训练，可以稳定报错：
 
