@@ -4,7 +4,7 @@
 
 ### 1. 创建新的 DPO Ray Trainer 与 main_dpo
 
-- **main_dpo**  
+- **main_spin**  
   创建了一个新的 `main_dpo` 模块，作为在线 DPO 的入口脚本。它负责加载配置、初始化 Ray 集群和构造 DPO 训练器，并启动训练流程。这个模块基于原有 PPO 的入口做了适当修改，以适配在线 DPO 的流程。
 
 - **RayDPOTrainer**  
@@ -24,3 +24,8 @@
 - **新增 DPO 更新接口**  
   在原有的 DataParallelPPOActor 中，增加了 `update_policy_dpo` 方法。该方法与传统 PPO 更新步骤类似，但它接收通过 union 合并的 chosen 和 rejected 回复，并从 meta_info 中提取 `"chosen_mask"`，随后调用核心算法模块中的 DPO 损失函数计算损失并执行反向传播与梯度更新。
   在原有的 ActorRolloutRefWorker(Worker) 中，增加了 `update_actor_dpo`方法。为`update_policy_dpo`提供接口。
+
+### 4. 一些踩坑记录
+
+- **trainer.ref_update_freq设置**
+  之前再完成implement测试的过程中对这个参数的设置一直过大，导致model很容易被reward hack, 进入local max, 从而导致训练崩盘。再重新选择后，已经能够稳定涨点并收敛。
