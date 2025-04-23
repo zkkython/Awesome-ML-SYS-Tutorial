@@ -42,8 +42,8 @@ wandb login
 4. Download dataset and model
 
 ```bash
-python3 examples/data_preprocess/math_dataset.py --local_dir ~/data/math
-huggingface-cli download Qwen/Qwen2.5-7B-Instruct --local-dir $HOME/models/Qwen2.5-7B-Instruct
+python3 examples/data_preprocess/gsm8k.py --local_dir ~/data/math
+huggingface-cli download Qwen/Qwen2.5-3B-Instruct --local-dir $HOME/models/Qwen2.5-3B-Instruct
 ```
 
 5. run bash (tested on h20x4)
