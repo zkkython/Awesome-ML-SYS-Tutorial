@@ -80,10 +80,10 @@ My learning notes/codes for ML SYS.  English version is under development and on
 ## ML System Fundamentals
 
 - **NCCL and NVIDIA TOPO**  
-  [English](./nccl/readme_en.md) | [[中文版](./nccl/readme.md)]：An introduction to NCCL and NVIDIA topology.
+  [English](./distributed/nccl/readme_en.md) | [[中文版](./distributed/nccl/readme.md)]：An introduction to NCCL and NVIDIA topology.
 
 - **PyTorch Distributed**  
-   [English TODO] | [[中文版](./torch-distributed/readme.md)]：Practical communication in `torch.distributed`.
+   [English TODO] | [[中文版](./distributed/torch-distributed/readme.md)]：Practical communication in `torch.distributed`.
 
 - **Give Me BF16 or Give Me Death: A Comprehensive Evaluation of Current Quantization Methods**  
   [[中文版](https://zhuanlan.zhihu.com/p/5485556270)]：A detailed evaluation of current quantization methods.
@@ -105,7 +105,7 @@ My learning notes/codes for ML SYS.  English version is under development and on
   [English TODO] | [[中文版](./engineer/uv/readme.md)]：How to set up a clean and efficient development environment.
 
 - **Understanding Special Tokens and Chat Templates**  
-  [English TODO] | [[中文版](./transformers/special_tokens.md)]：A guide to understanding special tokens and chat templates.
+  [English TODO] | [[中文版](./transformers/special_tokens/special_tokens.md)]：A guide to understanding special tokens and chat templates.
 
 - **Compiling Jupyter Notebooks on CI and Deploying as Documentation**  
   [[中文版](https://zhuanlan.zhihu.com/p/2382351079)]：A guide on compiling Jupyter notebooks in CI and deploying them as documentation.
