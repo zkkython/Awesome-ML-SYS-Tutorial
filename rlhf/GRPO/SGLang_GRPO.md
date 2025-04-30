@@ -79,7 +79,7 @@ where $clip(⋅,1−\epsilon,1+\epsilon)$ ensures that updates stay close to the
 
 ## Customized GRPO
 
-To support GRPO in TRL, we need to customize the GRPO Trainer. First, we can take a look at how inference engine like vLLM is used in the [GRPO Trainer](https://github.com/huggingface/trl/blob/main/trl/trainer/grpo_trainer.py).
+To support GRPO in TRL, we need to customize the GRPO Trainer. First, we can take a look at how inference engines are used in the [GRPO Trainer](https://github.com/huggingface/trl/blob/main/trl/trainer/grpo_trainer.py).
 
 
 ### Conditional Setup and Import
@@ -165,17 +165,17 @@ By detaching the generation task to a dedicated GPU placement group, the trainin
 
 ## Support SGLang in GRPO Trainer
 
-Here, we continue working on the modifications we made to support SGLang as an inference backend alongside other inference engines in the GRPOTrainer. Unlike other inference engines—which run as an in-process engine using dedicated classes (e.g. LLM, SamplingParams) and requires patching of distributed methods—SGLang is deployed as a standalone server with HTTP endpoints (compatible with OpenAI's APIs). As a result, our integration leverages HTTP requests to manage weight updates and generate completions.
+Here, we support SGLang as an inference backend alongside other inference engines in the `GRPOTrainer`. Unlike other inference engines—which run as an in-process engine using dedicated classes (e.g. `LLM`, `SamplingParams`) and requires patching of distributed methods—SGLang is deployed as a standalone server with HTTP endpoints (compatible with OpenAI's APIs). As a result, our integration leverages HTTP requests to manage weight updates and generate completions.
 
 To substitute other inference engines with **SGLang**, we must account for the differences in API and internal architecture. The following steps outline the necessary modifications:
 
-- Checkpoint-based Updates:
+- **Checkpoint-based Updates**
 
-    - Update the GRPOConfig by adding a checkpoint_path parameter.
+    - Update the `GRPOConfig` by adding a `checkpoint_path` parameter.
 
     - Write model checkpoints at regular intervals.
 
-    - Use the existing /update_weights_from_disk endpoint provided by the SGLang server.
+    - Use the existing `/update_weights_from_disk` endpoint provided by the SGLang server.
 
 This approach avoids modifying SGLang’s internal initialization routines and leverages its existing, stable checkpoint-loading capabilities.
 
@@ -185,9 +185,9 @@ Instead of importing in-process engine classes for SGLang, we introduce a config
 
 ### Initialization on a Dedicated GPU
 
-- **Server Launch and Device Assignment:**
+- **Server Launch and Device Assignment**
 
-Rather than creating an in-process generation engine (as with vLLM), we launch the SGLang server as an external process on a dedicated GPU. For example, in the trainer's `__init__`, we added:
+Rather than creating an in-process generation engine, we launch the SGLang server as an external process on a dedicated GPU. For example, in the trainer's `__init__`, we added:
 
 ```python
 if self.args.use_sglang:
@@ -205,7 +205,7 @@ if self.args.use_sglang:
 
 This command dedicates one GPU exclusively for the SGLang server, which will handle all generation requests.
 
-- **Process Synchronization:**
+- **Process Synchronization**
 
 After launching the server, we call:
 
@@ -215,11 +215,11 @@ self.accelerator.wait_for_everyone()
 
 to ensure that all distributed processes are synchronized before proceeding.
 
-### **2.3.3 Generation and Weight Synchronization**
+### Generation and Weight Synchronization
 
-- **Weight Synchronization:**
+- **Weight Synchronization**
 
-With vLLM, we update weights in-process via a helper like `_move_model_to_vllm()`. For SGLang, weight updates occur externally. We implement a helper function `_update_sglang_weights()` that calls SGLang's **/update_weights_from_disk** API to refresh the server's model state:
+In vLLM, update weights are done in-process via a helper like `_move_model_to_vllm()`. For SGLang, weight updates occur externally. We implement a helper function `_update_sglang_weights()` that calls SGLang's `/update_weights_from_disk` API to refresh the server's model state:
 
 We revised `_update_sglang_weights` to robustly update model weights on the SGLang server by calling its /update_weights_from_disk API. This function now:
 - Checks if the checkpoint exists.
@@ -229,14 +229,16 @@ We revised `_update_sglang_weights` to robustly update model weights on the SGLa
 
 - **About SGLang update weights**
 
-    **We meet some issue when trying to revise this function. To fix this, we must choose one of two paths:**
+【这里得全部改了】
 
-    1. **Initialize the weight update group on the SGLang server** so that it supports distributed updates (and then continue using /update_weights_from_distributed). This means modifying the server's initialization (in ModelRunner) to call its init_weights_update_group function.
+**We meet some issue when trying to revise this function. To fix this, we must choose one of two paths:**
 
-    2. **Add a checkpointing mechanism in the training loop and use the disk-based update endpoint** `/update_weights_from_disk` (which doesn't require a weight update group). For this, update GRPOConfig to include a checkpoint_path and ensure that a checkpoint is written before calling the update.
+1. **Initialize the weight update group on the SGLang server** so that it supports distributed updates (and then continue using `/update_weights_from_distributed`). This means modifying the server's initialization (in `ModelRunner`) to call its `init_weights_update_group` function.
+
+2. **Add a checkpointing mechanism in the training loop and use the disk-based update endpoint** `/update_weights_from_disk` (which doesn't require a weight update group). For this, update GRPOConfig to include a checkpoint_path and ensure that a checkpoint is written before calling the update.
 
 
-In our current workflow we load the model directly from Hugging Face – which means we never had a "checkpoint" per se. To use the SGLang `/update_weights_from_disk` endpoint (our "second choice"), we need to supply a checkpoint file. One straightforward solution is to add a new field (say, checkpoint_path) to our `GRPOConfig` and then, before training starts, save the current model weights to that location. Then, when `_update_sglang_weights()` is called, it will have a valid file from which the SGLang server can reload the weights.
+In our current workflow we load the model directly from Hugging Face – which means we never had a "checkpoint". To use the SGLang `/update_weights_from_disk` endpoint (our "second choice"), we need to supply a checkpoint file. One straightforward solution is to add a new field (say, checkpoint_path) to our `GRPOConfig` and then, before training starts, save the current model weights to that location. Then, when `_update_sglang_weights()` is called, it will have a valid file from which the SGLang server can reload the weights.
 
 ```python
 def _update_sglang_weights(self):
@@ -279,13 +281,10 @@ def _update_sglang_weights(self):
 
 This function is called whenever the training step advances (e.g., if global_step changes).
 
-- **Generation Call:**
+- **Generation Call**
 
 In the `_prepare_inputs()` method, we replace the in-process generation call with an HTTP request to SGLang's `/generate` endpoint:
 
-> - This branch mirrors the vLLM branch in structure but uses HTTP requests instead of an in-process generation call.
-- It maintains consistency with the default postprocessing (padding, slicing, and concatenation) so that the rest of the training pipeline remains unchanged.
->
 
 ```python
 if self.use_sglang:
@@ -320,68 +319,59 @@ if self.use_sglang:
     prompt_completion_ids = torch.cat([prompt_ids, completion_ids], dim=1)
 ```
 
-- **Broadcasting Results:**
+- **Broadcasting Results**
 
 We then broadcast the generated completions from the main process across all processes using `broadcast_object_list()` and slice the results according to each process's index.
 
-### **2.3.4 API and Integration Adjustments**
+### **API and Integration Adjustments**
 
-- **Parameter Differences:**
+- **Parameter Differences**
 
 Since SGLang's API mimics OpenAI's endpoints, we pass sampling parameters as a **JSON payload** (e.g., `temperature`, `max_new_tokens`) to the `/generate` endpoint.
 
-- **Error Handling and Device Checks:**
+- **Error Handling and Device Checks**
 
 We update error messages and checks for SGLang without needing to patch distributed functions—since SGLang runs as an external service, it operates independently of the training environment.
 
-### **2.3.5 Overall Code Changes Recap**
+### **Overall Code Changes Recap**
 
-- **Backend Flags:**
+- **Backend Flags**
 
-Added use_sglang (and retained use_vllm) in configuration to let users choose the inference backend.
+Added `use_sglang` (and retained `use_vllm`) in configuration to let users choose the inference backend.
 
-- **Server Initialization:**
+- **Server Initialization**
 
 In the `__init__` method, if `use_sglang` is True, launch the SGLang server on a dedicated GPU and set `self.sglang_server_url`.
 
-- **Weight Updates:**
+- **Weight Updates**
 
 Implemented a robust **`_update_sglang_weights()`** function that ensures the SGLang server updates its model weights from the latest checkpoint, with error handling and cache flushing.
 
-- **Generation Branch:**
+- **Generation Branch**
 
 Modified **`_prepare_inputs()`** to branch based on the selected backend:
 
-- **SGLang Branch:**
+- **SGLang Branch**
 
 Uses HTTP calls to SGLang's `/generate` endpoint, then converts returned texts to token IDs, broadcasts, and postprocesses.
 
-### **2.3.6 Testing and Next Steps**
+### Testing and Next Steps
 
-1. **Test the SGLang Server:**
+1. **Test the SGLang Server**
 
 Ensure that the SGLang server launches correctly on the dedicated GPU and that its `/generate` and `/update_weights_from_disk` endpoints respond as expected.
 
-1. **Integration Test:**
+2. **Integration Test**
 
 Run the modified GRPOTrainer on a small dataset and verify that:
 
 - Weights are updated on the SGLang server when the training step advances.
 - Generation results are correctly broadcast and postprocessed.
 - The overall training loop runs without errors.
-1. **Cleanup:**
-- Consider adding a cleanup method (or a destructor) in GRPOTrainer to properly shut down the SGLang server process when training finishes.
-- Add SGLang Installation and Support doc in the readme.md
 
-## **2.4 Summary**
+## Summary
 
-### **2.4.1 vLLM's Role:**
-
-vLLM offloads text generation to an in-process engine running on a dedicated GPU by patching distributed training functions, moving weights directly, and calling an internal generate() method.
-
-### **2.4.2 Replacing vLLM with SGLang:**
-
-To swap vLLM with SGLang, we would:
+To support SGLang in TRL, we:
 
 1. Introduce a configuration flag (e.g. use_sglang) and assign a dedicated GPU for the SGLang server.
 2. Launch the SGLang server externally using a command (with appropriate GPU assignment) and wait for it to initialize.
@@ -389,9 +379,9 @@ To swap vLLM with SGLang, we would:
 4. Implement a helper to update model weights on the SGLang server via its /update_weights_from_disk API.
 5. Adjust parameter names, error handling, and synchronization logic to match SGLang's external server API.
 
-# **References:**
+# References
 
-- SGLang Documentation – [https://docs.sglang.ai/backend/](https://docs.sglang.ai/backend/)
-- HuggingFace GRPO Trainer Documentation - [https://huggingface.co/docs/trl/main/en/grpo_trainer](https://huggingface.co/docs/trl/main/en/grpo_trainer)
+- SGLang Documentation – https://docs.sglang.ai/backend
+- HuggingFace GRPO Trainer Documentation - https://huggingface.co/docs/trl/main/en/grpo_trainer
 - Speeding Up Training - https://huggingface.co/docs/trl/main/en/speeding_up_training?vllm+examples=GRPO#vllm-for-fast-generation-in-online-methods
 - GRPO Trainer in TRL - https://github.com/huggingface/trl/blob/main/trl/trainer/grpo_trainer.py
