@@ -14,7 +14,7 @@ GRPO is composed of four steps:
 - Computing the loss
 
 <div align="center">
-<img src="GRPO_Images/grpo-main.png" width="100%">
+<img src="./grpo-main.png" width="100%">
 </div>
 
 
