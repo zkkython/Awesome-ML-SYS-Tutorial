@@ -53,7 +53,7 @@
 
 ## 启动 Server（launch Sever）
 
-SGLang 提供 SRT（SGLang Runtime）Server 用于[服务 HTTP 请求](https://sgl-project.github.io/start/send_request.html)以及一个不依赖 HTTP 协议的[离线推理引擎](https://sgl-project.github.io/backend/offline_engine_api.html)。核心函数 [`launch_server`](https://github.com/sgl-project/sglang/blob/f8b0326934bacb7a7d4eba68fb6eddebaa6ff751/python/sglang/srt/server.py#L507) 和 [`launch_engine`](https://github.com/sgl-project/sglang/blob/f8b0326934bacb7a7d4eba68fb6eddebaa6ff751/python/sglang/srt/server.py#L418) 均定义在 [server.py](https://github.com/sgl-project/sglang/blob/f8b0326934bacb7a7d4eba68fb6eddebaa6ff751/python/sglang/srt/server.py) 中。其中，`launch_engine` 函数负责初始化核心 SRT Server 的组件。
+SGLang 提供 SRT（SGLang Runtime）Server 用于[服务 HTTP 请求](https://sgl-project.github.io/backend/send_request.html)以及一个不依赖 HTTP 协议的[离线推理引擎](https://sgl-project.github.io/backend/offline_engine_api.html)。核心函数 [`launch_server`](https://github.com/sgl-project/sglang/blob/f8b0326934bacb7a7d4eba68fb6eddebaa6ff751/python/sglang/srt/server.py#L507) 和 [`launch_engine`](https://github.com/sgl-project/sglang/blob/f8b0326934bacb7a7d4eba68fb6eddebaa6ff751/python/sglang/srt/server.py#L418) 均定义在 [server.py](https://github.com/sgl-project/sglang/blob/f8b0326934bacb7a7d4eba68fb6eddebaa6ff751/python/sglang/srt/server.py) 中。其中，`launch_engine` 函数负责初始化核心 SRT Server 的组件。
 
 1. 设置 logging、Server 参数、CUDA/NCCL 环境变量以及进程间通信端口，配置 model 和 tokenizer。
 2. 如果 `dp_size > 1`，运行 `run_data_parallel_controller_process` 以启动多个 data parallel replicas；否则，在每个 `tp_rank` 上，以子进程的方式初始化一个 Scheduler，处理来自 TokenizerManager 的请求，并且管理 KV Cache。
