@@ -1,3 +1,4 @@
+Install verl: https://github.com/zhaochenyang20/Awesome-ML-SYS-Tutorial/blob/main/rlhf/verl/sppo/test-log.md
 # PPO-RM
 
 ```
