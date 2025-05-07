@@ -7,7 +7,7 @@ After two months of intense development and a final five-day sprint, our team ha
 
 Pull Request: [volcengine/verl#1037](https://github.com/volcengine/verl/pull/1037)
 
-Training performance: https://docs.net9.org/notes/editor/#_8
+Training performance (Used multi-turn on GSM8K tasks with Qwen2.5-3B, GRPO policy, FSDP+TP hybrid parallelism, tool-calling enabled, and 256 batch size on 8×H100 GPUs): https://wandb.ai/swordfaith/gsm8k_async_rl/runs/0pv3qwcy?nw=nwuserswordfaith
 
 ## What Problem We Solved?
 
