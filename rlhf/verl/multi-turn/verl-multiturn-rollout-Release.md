@@ -7,7 +7,7 @@ After two months of intense development and a final five-day sprint, our team ha
 
 Pull Request: [volcengine/verl#1037](https://github.com/volcengine/verl/pull/1037)
 
-Training performance (Used multi-turn on GSM8K tasks with Qwen2.5-3B, GRPO policy, FSDP+TP hybrid parallelism, tool-calling enabled, and 256 batch size on 8×H100 GPUs): https://wandb.ai/swordfaith/gsm8k_async_rl/runs/0pv3qwcy?nw=nwuserswordfaith
+Training performance (Used multi-turn on GSM8K tasks with Qwen2.5-3B-Instruct, GRPO policy, FSDP+TP hybrid parallelism, tool-calling enabled, and 256 batch size on 8×H100 GPUs): https://wandb.ai/swordfaith/gsm8k_async_rl/runs/0pv3qwcy?nw=nwuserswordfaith
 
 ## What Problem We Solved?
 
@@ -150,7 +150,19 @@ This configuration activates the AsyncSGLangRollout engine for multi-turn intera
 
 #### Custom Tool Configuration
 
-Tools are a critical component of our framework, which enables environment interactions, such as executing scripts or calculating rewards. To integrate custom tools, you can define their behavior in a separate YAML file and reference it in the rollout configuration. Here’s how to set it up:
+Tools are a critical component of our framework, which enables environment interactions, such as executing scripts, querying APIs, or calculating rewards. To integrate custom tools, you can define their behavior in a separate YAML file and reference it in the rollout configuration. To integrate a tool, follow these steps:
+
+##### 1. **Define Tool Logic in Python**:
+
+Each tool must subclass `BaseTool`, and implement:
+
+- `create(instance_id, ...)`: Initialize tool state per rollout.
+- `execute(instance_id, parameters, ...)`: Perform the tool's core functionality (e.g., evaluate output).
+- `calc_reward(instance_id)`: Compute the reward based on tool state and interaction.
+- `release(instance_id)`: Clean up any allocated resources.
+
+##### 2. Describe the Tool in YAML:
+ You must provide a schema for each tool using OpenAI’s `function` calling format, including name, description, parameters, and types. The YAML file is then referenced in the rollout config.
 
 ```yaml
 actor_rollout_ref:
@@ -160,8 +172,8 @@ actor_rollout_ref:
       format: chatml
 ```
 
-- `tool_config_path` specifies the YAML file containing tool definitions.
-- `format`  indicates the format for tool interaction messages (currently supports `chatml` only).
+- `tool_config_path` : Path to a YAML file defining all tool schemas and associated Python classes.
+- `format` : Format for tool interaction messages (currently supports `chatml` only).
 
 #### Example: GSM8K Tool Configuration
 
@@ -172,25 +184,37 @@ Breakdown of the Configuration:
 - **class_name**: Specifies the Python class implementing the tool’s logic. The class must be accessible in the codebase.
 - **config**: An optional field for additional tool-specific configurations (e.g., API keys, model parameters).
 - **tool_schema**: Defines the tool’s interface using a schema compatible with OpenAIFunctionToolSchema or veRL’s protocols.
-
 - **type: "function"**: Indicates the tool is a function-based tool.
 - **function.name**: The tool’s identifier (calc_gsm8k_reward), used during tool selection.
 - **function.description**: A human-readable description of the tool’s purpose.
-- **function.parameters**: Describes the input parameters the tool expects. The required field defines the mandatory parameters..
+- **function.parameters**: Describes the input parameters the tool expects. The required field defines the mandatory parameters.
 
-## Challenges, Methods, and Open Issues
+#### How Tool Interactions Work
+
+During rollout:
+
+1. The LLM generates a response containing a structured function call (tool invocation) based on the schema.
+2. `AsyncSGLangRollout` uses a `FunctionCallParser` to detect and extract tool calls from the output.
+3. The rollout engine calls `tool.execute()` with parsed arguments.
+4. The tool may:
+   - Return a textual response
+   - Return a step reward
+   - Update internal tool state
+5. The engine appends the tool response to the message history and continues the dialogue.
+6. After the full rollout, the tool’s `calc_reward()` is called to compute final reward.
+
+With this plugin-style architecture, tools can be flexibly reused across tasks and agents without changing the core engine or rollout loop.
+
+## Challenges and Methods
 
 - **Padding Strategy Mismatch**: veRL adopts a left-padding strategy for prompts and a right-padding strategy for responses, which introduces a padding inconsistency with our initial version of code. To mitigate this, our implementation explicitly tracks token positions across segments and applies tailored masks to maintain correctness.
 - **Multi-Turn Loss Masking:** Most existing RLHF frameworks assume a single-turn generation pattern and lack support for granular, token-level loss masking across multiple dialogue turns. However, in multi-turn settings—especially with tool interactions—not every generated token should contribute to the learning signal. For example, some tool-generated responses should be excluded from the optimization process. We addressed this by designing a custom multi-turn loss masking mechanism, allowing fine-grained control over which tokens are included in policy gradient updates, thereby ensuring an accurate reward computation.
 - **Generalized Tool API Design**: Environment in the RLHF training scenarios could be complicated, and customized tools are needed for agents to interact with the outside world. To support flexible and reusable tool integration, we designed a generalized tool interface. This design enables users to register tools with their customized functions into the rollout process. By unifying tool definitions in a schema-driven format, we make our framework highly extensible to easily add tools and reuse them across tasks and models without much modification.
 - **SPMD Conflicts in Tool Invocation**: In tensor-parallel (TP) environments, invoking external tools—such as API calls, script evaluators, or reward calculators—must be controlled to avoid concurrency issues. A naive implementation may result in the same tool being called multiple times in parallel across TP ranks, causing inconsistencies or deadlocks. To avoid this, all tool invocations are restricted to TP rank 0, with results broadcast to other ranks. This avoids performance bottlenecks due to redundant calls.
 - **Asynchronous Rollout for Multi-Turn Interactions**: Synchronous rollouts often suffer from the long-tail problem, where the slowest sample in a batch delays the entire pipeline. This issue is especially prominent in multi-turn tasks involving variable-length dialogues and tool calls. To address this, we implemented asynchronous rollout at the request level, allowing each dialogue to progress independently. 
-- **NaN Losses**: During training, NaN losses were observed. We analyzed that it may be because of the extreme discrepancies between the actor and reference model log probabilities, which lead to unstable importance sampling ratios. This is often due to rare tokens or divergent generations. We addressed this by monitoring log probability statistics via wandb, tuning the KL penalty, and applying clip thresholds to prevent such instabilities from propagating.**Event Loop Conflicts:** SGLang already embeds an internal asyncio loop. Creating additional loops externally causes rollouts to hang indefinitely.
 - **Event Loop Conflicts in Asynchronous Execution**: During testing, we encountered a problem: with enable_memory_saver on, async_generate got hung. After extensive investigation, we found that the root cause was the existence of multiple concurrent event loops, violating Python’s asyncio design. SGLang internally manages its own asynchronous event loop to coordinate token streaming, multi-turn interaction, and memory-efficient generation. We mistakenly added a second event loop, thus making the program stuck forever. Our fix ensures that all async execution happens within SGLang’s own loop by running the existing loop instead of invoking asyncio.run() inside async_generate.
 
 ## Acknowledgments
-
-------
 
 - 面壁
 - 智谱
@@ -198,8 +222,7 @@ Breakdown of the Configuration:
 
 ## Our Work Plan
 
-------
-
+- During training, NaN losses were observed. We analyzed that it may be because of the extreme discrepancies between the actor and reference model log probabilities, which lead to unstable importance sampling ratios. We are currently working on solving this problem.
 - Integration of multi-turn RLHF-suitable tasks (e.g., R1-Searcher, sandbox fusion)
 - Support more policy gradient estimators beyond GRPO
 - Improve step-level reward integration
