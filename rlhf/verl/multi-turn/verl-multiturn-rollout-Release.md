@@ -115,13 +115,9 @@ function now() {
 
 #### Download the Dataset
 
-Please use the updated preprocessing script to avoid prompt formatting issues. Download the [script](https://gist.github.com/SwordFaith/7bcce3872fdf3cd06ce2a7ac1aff9594) and place it into your working directory:
-
 ```bash
-# After downloading the script, place it in ./examples/data_preprocess/ and run:
 python3 ./examples/data_preprocess/gsm8k_multiturn_w_tool.py
 ```
-*Note: Due to a minor inconsistency in the `main` branch introduced during a previous merge, the official script may not exactly match the one used in our experiments. We're working on a fix — in the meantime, please use the Gist version to ensure correct prompt formatting and data alignment.*
 
 #### Run
 
