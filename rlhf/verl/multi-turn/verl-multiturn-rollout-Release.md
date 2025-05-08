@@ -216,9 +216,10 @@ With this plugin-style architecture, tools can be flexibly reused across tasks a
 
 ## Acknowledgments
 
-- 面壁
-- 智谱
+- ModelBest/OpenBMB
+- Tsinghua University
 - SGLang RLHF Team
+- verl Team
 
 ## Our Work Plan
 
