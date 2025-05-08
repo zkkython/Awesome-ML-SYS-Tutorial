@@ -121,6 +121,7 @@ Please use the updated preprocessing script to avoid prompt formatting issues. D
 # After downloading the script, place it in ./examples/data_preprocess/ and run:
 python3 ./examples/data_preprocess/gsm8k_multiturn_w_tool.py
 ```
+*Note: Due to a minor inconsistency in the `main` branch introduced during a previous merge, the official script may not exactly match the one used in our experiments. We're working on a fix — in the meantime, please use the Gist version to ensure correct prompt formatting and data alignment.*
 
 #### Run
 
