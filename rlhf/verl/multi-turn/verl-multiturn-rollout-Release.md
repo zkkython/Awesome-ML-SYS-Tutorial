@@ -115,6 +115,9 @@ function now() {
 
 #### Download the Dataset
 
+Note that we updated the data process script in [this PR](https://github.com/volcengine/verl/pull/1445
+), please check whether you are using the latest one.
+
 ```bash
 python3 ./examples/data_preprocess/gsm8k_multiturn_w_tool.py
 ```
