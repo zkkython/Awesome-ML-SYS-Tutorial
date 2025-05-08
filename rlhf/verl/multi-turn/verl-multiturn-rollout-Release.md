@@ -152,17 +152,18 @@ This configuration activates the AsyncSGLangRollout engine for multi-turn intera
 
 Tools are a critical component of our framework, which enables environment interactions, such as executing scripts, querying APIs, or calculating rewards. To integrate custom tools, you can define their behavior in a separate YAML file and reference it in the rollout configuration. To integrate a tool, follow these steps:
 
-##### 1. **Define Tool Logic in Python**:
+##### 1. **Define Tool Logic in Python**
 
 Each tool must subclass `BaseTool`, and implement:
 
-- `create(instance_id, ...)`: Initialize tool state per rollout.
-- `execute(instance_id, parameters, ...)`: Perform the tool's core functionality (e.g., evaluate output).
+- `create(instance_id, ...)`: Initialize tool state per rollout, can be skipped if the tool does not need to maintain state.
+- `execute(instance_id, parameters, ...)`: Perform the tool's core functionality (e.g. evaluate output, call APIs, do search, run code interpreter, etc.), the tool's response will be appended to the message history, and will support returning a step reward and tool metrics in future.
 - `calc_reward(instance_id)`: Compute the reward based on tool state and interaction.
-- `release(instance_id)`: Clean up any allocated resources.
+- `release(instance_id)`: Clean up any allocated resources, can be skipped if the tool does not need to maintain state.
 
-##### 2. Describe the Tool in YAML:
- You must provide a schema for each tool using OpenAI’s `function` calling format, including name, description, parameters, and types. The YAML file is then referenced in the rollout config.
+##### 2. **Describe the Tool in YAML**
+
+You must provide a schema for each tool using OpenAI’s `function` calling format, including name, description, parameters, and types. The YAML file is then referenced in the rollout config.
 
 ```yaml
 actor_rollout_ref:
@@ -182,26 +183,27 @@ To illustrate how to configure a tool, we provide an example based on the Gsm8kT
 Breakdown of the Configuration:
 
 - **class_name**: Specifies the Python class implementing the tool’s logic. The class must be accessible in the codebase.
-- **config**: An optional field for additional tool-specific configurations (e.g., API keys, model parameters).
-- **tool_schema**: Defines the tool’s interface using a schema compatible with OpenAIFunctionToolSchema or veRL’s protocols.
+- **config**: An optional field for additional tool-specific configurations used in `__init__` method (e.g., API keys, model parameters).
+- **tool_schema**: Defines the tool’s interface using a schema compatible with OpenAIFunctionToolSchema.
 - **type: "function"**: Indicates the tool is a function-based tool.
 - **function.name**: The tool’s identifier (calc_gsm8k_reward), used during tool selection.
-- **function.description**: A human-readable description of the tool’s purpose.
-- **function.parameters**: Describes the input parameters the tool expects. The required field defines the mandatory parameters.
+- **function.description**: A human-readable description of the tool’s purpose, which will be used in the model chat template.
+- **function.parameters**: Describes the input parameters the tool expects. The required field defines the mandatory parameters, also will be used in the model chat template.
 
 #### How Tool Interactions Work
 
 During rollout:
 
-1. The LLM generates a response containing a structured function call (tool invocation) based on the schema.
-2. `AsyncSGLangRollout` uses a `FunctionCallParser` to detect and extract tool calls from the output.
-3. The rollout engine calls `tool.execute()` with parsed arguments.
-4. The tool may:
-   - Return a textual response
-   - Return a step reward
+1. Preprocess `generate_sequences_with_tool` prompts with intersection of available tools and sample_level `tool_kwargs` to generate prompt with sample specific tools and handle prompts in message list way.
+2. The LLM generates a response containing a structured function call (tool invocation) based on the schema.
+3. `AsyncSGLangRollout` uses a `FunctionCallParser` to detect and extract tool calls from the output.
+4. The rollout engine calls `tool.execute()` with parsed arguments.
+5. The tool may:
+   - Return a textual tool response, which will be appended to the message history with `tool` role.
+   - Return a step reward and tool metrics, which can be used to calculate the final reward and monitor tool performance.
    - Update internal tool state
-5. The engine appends the tool response to the message history and continues the dialogue.
-6. After the full rollout, the tool’s `calc_reward()` is called to compute final reward.
+6. The engine appends the tool response to the message history and continues the dialogue.
+7. After the full rollout, the tool’s `calc_reward()` is called to compute final reward.
 
 With this plugin-style architecture, tools can be flexibly reused across tasks and agents without changing the core engine or rollout loop.
 
