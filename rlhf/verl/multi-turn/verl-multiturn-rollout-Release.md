@@ -2,7 +2,7 @@
 
 by: The SGLang Team, May 12, 2025
 
-We are thrilled to announce the release of the first fully functional, convergence-verified, end-to-end open source multi-turn Reinforcement Learning with Human Feedback (RLHF) framework, powered by SGLang and integrated with verl. This framework has been successfully integrated into the verl platform and is now open for use, providing a novel solution for Agentic reinforcement learning training.
+We are thrilled to announce the release of the first fully functional, convergence-verified, end-to-end open source multi-turn Reinforcement Learning with Human Feedback (RLHF) framework supporting multi-task, multi-tool mixed training, powered by SGLang and integrated with verl. This framework has been successfully integrated into the verl platform and is now open for use, providing a novel solution for Agentic reinforcement learning training.
 
 After two months of intense development and a final five-day sprint, our team has delivered a robust solution that enables asynchronous multi-turn dialogues and tool-calling in Agentic RL. This release marks a significant step forward in scalable RLHF for large language models.
 
@@ -18,6 +18,7 @@ Our goals are：
 
 - Support asynchronous multi-turn interactions with high efficiency.  
 - Integrate tool-calling into RLHF workflows in an easily-extensible style.  
+- Support multi-task, multi-tool mixed training.
 - Prove our training performance on complex, multi-turn suitable tasks.  
 - Operate reliably in large-scale, distributed environments.  
 
@@ -27,6 +28,7 @@ Our goals are：
 2. **Generalized Tool Calling with Unified Schema**: We support `OpenAIFunctionToolSchema`, convertible with verl's Model Context Protocol / Agent2Agent Protocol. This allows seamless tool integration across both training and inference workflows.
 3. **Parameter Injection Mechanism**: Users can dynamically select tools during sampling (e.g., via `need_tools_kwargs`) and inject call parameters (`tool_kwargs`), streamlining tool integration.
 4. **GRPO Policy Gradient**: We adopt the GRPO strategy (`adv_estimator = grpo`) for stable reward propagation over multi-turn sequences.
+5. **Multi-Task, Multi-Tool Mixed Training**: By combining the sample-level parameter injection mechanism with verl's `data_source`-based reward_func routing mechanism, we support mixed training across multiple tasks and multiple tools.
 
 ## How to Use It
 

@@ -2,7 +2,7 @@
 
 作者：SGLang 团队，2025 年 5 月 12 日
 
-大家好，经过两个月的密集开发和最后冲刺，我们很高兴与大家分享一个重要成果：由 SGLang 团队主导，联合清华大学、OpenBMB 和 verl 团队的研究人员共同打造的首个端到端多轮 RLHF 开源框架现已正式发布！该框架已在 verl 平台完成集成并开放使用，为 Agentic 强化学习训练提供了全新的解决方案。
+大家好，经过两个月的密集开发和最后冲刺，我们很高兴与大家分享一个重要成果：由 SGLang 团队主导，联合清华大学、OpenBMB 和 verl 团队的研究人员共同打造的首个支持多任务、多工具混合训练的端到端多轮 RLHF 开源框架现已正式发布！该框架已在 verl 平台完成集成并开放使用，为 Agentic 强化学习训练提供了全新的解决方案。
 
 PR 链接：[volcengine/verl#1037](https://github.com/volcengine/verl/pull/1037)
 
@@ -18,6 +18,7 @@ PR 链接：[volcengine/verl#1037](https://github.com/volcengine/verl/pull/1037)
 
 - 高效支持异步多轮交互。
 - 以易于扩展的方式将工具调用集成到 RLHF 工作流中。
+- 支持多种多轮任务、多种工具集合一起训练
 - 在复杂、适合多轮的任务上验证我们的训练性能。
 - 在大规模、分布式环境中可靠运行。
 
@@ -27,6 +28,7 @@ PR 链接：[volcengine/verl#1037](https://github.com/volcengine/verl/pull/1037)
 2. **统一工具调用接口**：我们采用 `OpenAIFunctionToolSchema` 格式，可与 verl 的 Model Context Protocol 和 Agent2Agent Protocol 相互转换。这使得工具能够无缝集成到训练和推理工作流中。
 3. **参数注入机制**：用户可在采样时动态选择工具（通过 `need_tools_kwargs`）并注入调用参数（`tool_kwargs`），从而简化自定义工具的集成。
 4. **GRPO 策略优化**：我们采用 GRPO 策略（`adv_estimator = grpo`）来实现多轮序列上稳定的奖励传播。
+5. **多任务、多工具混合训练**： 通过将样本级参数注入机制与 verl 基于 `data_source` 路由 reward_func 的机制相结合，支持了多任务、多工具混合训练。
 
 ## 如何使用
 
