@@ -219,67 +219,53 @@ to ensure that all distributed processes are synchronized before proceeding.
 
 - **Weight Synchronization**
 
-In vLLM, update weights are done in-process via a helper like `_move_model_to_vllm()`. For SGLang, weight updates occur externally. We implement a helper function `_update_sglang_weights()` that calls SGLang's `/update_weights_from_disk` API to refresh the server's model state:
+SGLang offers several weight update strategies, each suited to a different deployment setting:
 
-We revised `_update_sglang_weights` to robustly update model weights on the SGLang server by calling its /update_weights_from_disk API. This function now:
-- Checks if the checkpoint exists.
-- Sends an HTTP POST with a timeout.
-- Checks for a success flag in the response.
-- Optionally flushes the cache after the update.
+**update_weights_from_distributed** uses NCCL (NVIDIA Collective Communications Library) for high-performance GPU-to-GPU communication. It's ideal for fully distributed training setups across multiple nodes.
+
+**update_weights_from_tensor**, in contrast, is designed for intra-node, cross-process updates. It’s particularly useful for inference servers like VerlEngine using HybridEngine. This method passes tensors via shared memory between CPU or GPU processes, and the receiving process directly copies them into model parameters. It does not rely on NCCL or HTTP. Instead, it uses pointer sharing and explicit copy operations. As a result, parameters are never transmitted over HTTP during updates. When migrating from veRL Engine to veRL Server, only lightweight metadata needs to be transferred. This minor overhead is a reasonable tradeoff for the greater flexibility that a server-based architecture provides.
+
+
+In vLLM, update weights are done in-process via a helper like `_move_model_to_vllm()`. For SGLang, weight updates occur externally through its HTTP API. For SGLang, weight updates occur externally. We implement a helper function `_update_sglang_weights()` that calls SGLang's /update_weights_from_tensor API to update the server's model state:
 
 - **About SGLang update weights**
 
-【这里得全部改了】
+The `_update_sglang_weights` function updates the model's weights on the SGLang server by serializing the model's parameters using MultiprocessingSerializer. It then sends the serialized tensors to the server via an HTTP POST request to the `/update_weights_from_tensor` endpoint. This method directly transfers tensors between processes and can optionally flush the cache after the update. The approach avoids disk-based checkpoints and relies on tensor communication for more efficient weight synchronization.
 
-**We meet some issue when trying to revise this function. To fix this, we must choose one of two paths:**
+This function:
 
-1. **Initialize the weight update group on the SGLang server** so that it supports distributed updates (and then continue using `/update_weights_from_distributed`). This means modifying the server's initialization (in `ModelRunner`) to call its `init_weights_update_group` function.
+\- Serializes model parameters using MultiprocessingSerializer.
 
-2. **Add a checkpointing mechanism in the training loop and use the disk-based update endpoint** `/update_weights_from_disk` (which doesn't require a weight update group). For this, update GRPOConfig to include a checkpoint_path and ensure that a checkpoint is written before calling the update.
+\- Sends an HTTP POST request to SGLang's `/update_weights_from_tensor` API.
 
-
-In our current workflow we load the model directly from Hugging Face – which means we never had a "checkpoint". To use the SGLang `/update_weights_from_disk` endpoint (our "second choice"), we need to supply a checkpoint file. One straightforward solution is to add a new field (say, checkpoint_path) to our `GRPOConfig` and then, before training starts, save the current model weights to that location. Then, when `_update_sglang_weights()` is called, it will have a valid file from which the SGLang server can reload the weights.
+\- Flushes the cache after the update.
 
 ```python
 def _update_sglang_weights(self):
-    """
-    Update the model weights on the SGLang server via its API.
-    This function assumes that the training loop writes the latest checkpoint to self.args.checkpoint_path.
-    It performs additional checks and error handling to ensure the server successfully updates its weights.
-    """
-    import os
-    import requests
-
-    checkpoint = self.args.checkpoint_path
-    if not os.path.exists(checkpoint):
-        raise FileNotFoundError(f"Checkpoint path {checkpoint} does not exist.")
-
-    payload = {"model_path": checkpoint}
-    try:
-        response = requests.post(
-            f"{self.sglang_server_url}/update_weights_from_disk",
-            json=payload,
-            timeout=60,
-        )
-    except requests.RequestException as e:
-        raise RuntimeError(f"Weight update request failed: {e}")
-
-    res_json = response.json()
-    if not res_json.get("success", False):
-        raise RuntimeError(f"Failed to update weights on SGLang server: {res_json.get('message', 'No message provided')}")
-
-    # Optionally flush the cache after updating weights
-    try:
-        flush_response = requests.post(f"{self.sglang_server_url}/flush_cache", timeout=30)
-        if not flush_response.json().get("success", True):
-            print(f"Warning: Cache flush failed: {flush_response.json().get('message', 'No message provided')}")
-    except requests.RequestException as e:
-        print(f"Warning: Cache flush request failed: {e}")
-
-    print(f"SGLang weights updated successfully: {res_json.get('message')}")
+        """
+        Update the model weights on the SGLang server via its tensor-based update API.
+        This function only be called in main_process.
+        """
+        payload = {
+            "serialized_named_tensors": [
+                MultiprocessingSerializer.serialize(list(self.model.named_parameters()), output_str=True)
+            ],
+            "flush_cache": True, # flush cache after update weights
+        }
+        try:
+            response = requests.post(
+                f"{self.sglang_server_url}/update_weights_from_tensor",
+                json=payload,
+                timeout=60,
+            )
+        except requests.RequestException as e:
+            raise RuntimeError(f"Weight update request failed: {e}")
+        res_json = response.json()
+        if not res_json.get("success", False):
+            raise RuntimeError(
+                f"Failed to update weights on SGLang server: {res_json.get('message', 'No message provided')}"
+            )
 ```
-
-This function is called whenever the training step advances (e.g., if global_step changes).
 
 - **Generation Call**
 

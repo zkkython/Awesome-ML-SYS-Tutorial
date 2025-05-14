@@ -1,8 +1,8 @@
 # veRL-multiturn-rollout Release
 
-## 环境配置
+## Environment Setup
 
-### 创建新的 docker
+### Create a New Docker Container
 
 ```bash
 docker run \
@@ -18,13 +18,13 @@ docker run \
     /bin/zsh
 ```
 
-以后每次从 docker 里面 `exit` 出来，再用这个指令可以重启：
+To restart the container after exiting from it:
 
 ```bash
 docker start -i sglang_{your-name}
 ```
 
-### 更新 python
+### Update Python
 
 ```bash
 apt update
@@ -32,20 +32,20 @@ apt install -y python3.10 python3.10-venv
 python3 -m ensurepip --upgrade
 ```
 
-### 使用虚拟环境
+### Use Python Virtual Environment
 
 ```bash
-# 创建虚拟环境
+# Create a virtual environment
 python3 -m venv ~/.python/veRL-multiturn-rollout
 
-# 激活虚拟环境
+# Activate the virtual environment
 source ~/.python/veRL-multiturn-rollout/bin/activate
 
-# 安装 uv
+# Install uv
 python3 -m pip install uv
 ```
 
-### clone veRL main 代码
+### Clone the veRL Main Repository
 
 ```bash
 cd ~
@@ -53,44 +53,44 @@ git clone https://github.com/volcengine/verl.git
 cd verl
 ```
 
-### 配置 python 环境
+### Set Up the Python Environment
 
 ```bash
-# 安装 SGLang
+# Install SGLang
 python3 -m uv pip install -e ".[sglang]"
 
-# 手动安装 flash-attn
+# Manually install flash-attn
 python3 -m uv pip install wheel
 python3 -m uv pip install packaging
 python3 -m uv pip install flash-attn --no-build-isolation --no-deps
 
-# 安装 veRL
+# Install veRL
 python3 -m uv pip install .
 python3 -m uv pip install -r ./requirements.txt
 ```
 
-## 8 卡测试 SGLang
+## 8-GPU SGLang Test
 
-### 使用前需要配置好 `WANDB_API_KEY`
+### Set Up Your `WANDB_API_KEY` Before Running
 
-可以参考[这个过程](https://community.wandb.ai/t/where-can-i-find-the-api-token-for-my-project/7914)。
+Refer to [this guide](https://community.wandb.ai/t/where-can-i-find-the-api-token-for-my-project/7914) if you're not sure where to find your API token.
 
 ```bash
 export WANDB_API_KEY={YOUR_WANDB_API_KEY}
 
-# 定义这个时间戳函数
+# Define a timestamp function
 function now() {
     date '+%Y-%m-%d-%H-%M'
 }
 ```
 
-### 下载数据集
+### Download the Dataset
 
 ```bash
 python3 ./examples/data_preprocess/gsm8k_multiturn_w_tool.py
 ```
 
-### 运行
+### Run
 
 ```bash
 # First make sure the now() function is available in current shell
