@@ -1,7 +1,8 @@
-# SGLang & veRL: Pioneering End-to-End Multi-Turn RLHF
+# SGLang, verl, OpenBMB and Tsinghua University: Pioneering End-to-End Multi-Turn RLHF
+
 by: The SGLang Team, May 12, 2025
 
-We are thrilled to announce the release of the first fully functional, convergence-verified, end-to-end open source multi-turn Reinforcement Learning with Human Feedback (RLHF) framework, powered by SGLang and integrated with veRL.
+We are thrilled to announce the release of the first fully functional, convergence-verified, end-to-end open source multi-turn Reinforcement Learning with Human Feedback (RLHF) framework, powered by SGLang and integrated with verl. This framework has been successfully integrated into the verl platform and is now open for use, providing a novel solution for Agentic reinforcement learning training.
 
 After two months of intense development and a final five-day sprint, our team has delivered a robust solution that enables asynchronous multi-turn dialogues and tool-calling in Agentic RL. This release marks a significant step forward in scalable RLHF for large language models.
 
@@ -22,8 +23,8 @@ Our goals are：
 
 ## Our Solution
 
-1. **From Batch-Level to Request-Level Rollout** : We extended veRL’s rollout interface to support asynchronous, per-request multi-turn interactions, where each dialogue can independently span multiple rounds and tool calls, decoupling from the batch structure.
-2. **Generalized Tool Calling with Unified Schema**: We support `OpenAIFunctionToolSchema`, convertible with veRL’s Model Context Protocol / Agent2Agent Protocol. This allows seamless tool integration across both training and inference workflows.
+1. **From Batch-Level to Request-Level Rollout** : We extended verl's rollout interface to support asynchronous, per-request multi-turn interactions, where each dialogue can independently span multiple rounds and tool calls, decoupling from the batch structure.
+2. **Generalized Tool Calling with Unified Schema**: We support `OpenAIFunctionToolSchema`, convertible with verl's Model Context Protocol / Agent2Agent Protocol. This allows seamless tool integration across both training and inference workflows.
 3. **Parameter Injection Mechanism**: Users can dynamically select tools during sampling (e.g., via `need_tools_kwargs`) and inject call parameters (`tool_kwargs`), streamlining tool integration.
 4. **GRPO Policy Gradient**: We adopt the GRPO strategy (`adv_estimator = grpo`) for stable reward propagation over multi-turn sequences.
 
@@ -65,16 +66,16 @@ python3 -m ensurepip --upgrade
 
 ```bash
 # Create a virtual environment
-python3 -m venv ~/.python/veRL-multiturn-rollout
+python3 -m venv ~/.python/verl-multiturn-rollout
 
 # Activate the virtual environment
-source ~/.python/veRL-multiturn-rollout/bin/activate
+source ~/.python/verl-multiturn-rollout/bin/activate
 
 # Install uv
 python3 -m pip install uv
 ```
 
-#### Clone the veRL Main Repository
+#### Clone the verl Main Repository
 
 ```bash
 cd ~
@@ -93,7 +94,7 @@ python3 -m uv pip install wheel
 python3 -m uv pip install packaging
 python3 -m uv pip install flash-attn --no-build-isolation --no-deps
 
-# Install veRL
+# Install verl
 python3 -m uv pip install .
 python3 -m uv pip install -r ./requirements.txt
 ```
@@ -163,7 +164,7 @@ Each tool must subclass `BaseTool`, and implement:
 
 ##### 2. **Describe the Tool in YAML**
 
-You must provide a schema for each tool using OpenAI’s `function` calling format, including name, description, parameters, and types. The YAML file is then referenced in the rollout config.
+You must provide a schema for each tool using OpenAI's `function` calling format, including name, description, parameters, and types. The YAML file is then referenced in the rollout config.
 
 ```yaml
 actor_rollout_ref:
@@ -184,12 +185,12 @@ To illustrate how to configure a tool, we provide an example based on the Gsm8kT
 
 Breakdown of the Configuration:
 
-- **class_name**: Specifies the Python class implementing the tool’s logic. The class must be accessible in the codebase.
+- **class_name**: Specifies the Python class implementing the tool's logic. The class must be accessible in the codebase.
 - **config**: An optional field for additional tool-specific configurations used in `__init__` method (e.g., API keys, model parameters).
-- **tool_schema**: Defines the tool’s interface using a schema compatible with OpenAIFunctionToolSchema.
+- **tool_schema**: Defines the tool's interface using a schema compatible with OpenAIFunctionToolSchema.
 - **type: "function"**: Indicates the tool is a function-based tool.
-- **function.name**: The tool’s identifier (calc_gsm8k_reward), used during tool selection.
-- **function.description**: A human-readable description of the tool’s purpose, which will be used in the model chat template.
+- **function.name**: The tool's identifier (calc_gsm8k_reward), used during tool selection.
+- **function.description**: A human-readable description of the tool's purpose, which will be used in the model chat template.
 - **function.parameters**: Describes the input parameters the tool expects. The required field defines the mandatory parameters, also will be used in the model chat template.
 
 #### How Tool Interactions Work
@@ -205,7 +206,7 @@ During rollout:
    - Return a step reward and tool metrics, which can be used to calculate the final reward and monitor tool performance.
    - Update internal tool state
 6. The engine appends the tool response to the message history and continues the dialogue.
-7. After the full rollout, the tool’s `calc_reward()` is called to compute final reward.
+7. After the full rollout, the tool's `calc_reward()` is called to compute final reward.
 
 With this plugin-style architecture, tools can be flexibly reused across tasks and agents without changing the core engine or rollout loop.
 
@@ -213,13 +214,21 @@ With this plugin-style architecture, tools can be flexibly reused across tasks a
 
 ## Challenges and Methods
 
-- **Multi-Turn Loss Masking:** Most existing RLHF frameworks assume a single-turn generation pattern and lack support for granular, token-level loss masking across multiple dialogue turns. However, in multi-turn settings—especially with tool interactions—not every generated token should contribute to the learning signal. For example, some tool-generated responses should be excluded from the optimization process. We addressed this by designing a custom multi-turn loss masking mechanism, allowing fine-grained control over which tokens are included in policy gradient updates, thereby ensuring an accurate reward computation.
-- **Generalized Tool API Design**: Environment in the RLHF training scenarios could be complicated, and customized tools are needed for agents to interact with the outside world. To support flexible and reusable tool integration, we designed a generalized tool interface. This design enables users to register tools with their customized functions into the rollout process. By unifying tool definitions in a schema-driven format, we make our framework highly extensible to easily add tools and reuse them across tasks and models without much modification.
+We share the technical challenges encountered during development and our current solutions, welcoming community collaboration to maintain and improve the framework:
+
+- **Multi-Turn Loss Masking**: Most existing RLHF frameworks assume single-turn generation patterns and lack support for granular, token-level loss masking across multiple dialogue turns. However, in multi-turn settings—especially with tool interactions—not every generated token should contribute to the learning signal. For example, some tool-generated responses should be excluded from the optimization process. We addressed this by designing a custom multi-turn loss masking mechanism, allowing fine-grained control over which tokens are included in policy gradient updates, thereby ensuring accurate reward computation.
+
+- **Generalized Tool API Design**: The environment in RLHF training scenarios can be complex, requiring customized tools for agents to interact with the external world. To support flexible and reusable tool integration, we designed a generalized tool interface. This design enables users to register tools with their customized functions into the rollout process. By unifying tool definitions in a schema-driven format, we make our framework highly extensible to easily add tools and reuse them across tasks and models without much modification.
+
 - **SPMD Conflicts in Tool Invocation**: In tensor-parallel (TP) environments, invoking external tools—such as API calls, script evaluators, or reward calculators—must be controlled to avoid concurrency issues. A naive implementation may result in the same tool being called multiple times in parallel across TP ranks, causing inconsistencies or deadlocks. To avoid this, all tool invocations are restricted to TP rank 0, with results broadcast to other ranks. This avoids performance bottlenecks due to redundant calls.
-- **Asynchronous Rollout for Multi-Turn Interactions**: Synchronous rollouts often suffer from the long-tail problem, where the slowest sample in a batch delays the entire pipeline. This issue is especially prominent in multi-turn tasks involving variable-length dialogues and tool calls. To address this, we implemented asynchronous rollout at the request level, allowing each dialogue to progress independently. 
-- **Event Loop Conflicts in Asynchronous Execution**: During testing, we encountered a problem: `async_generate` deadlocked. After extensive investigation, we found that the root cause was the existence of multiple concurrent event loops, violating Python’s asyncio design. SGLang internally manages its own asynchronous event loop to coordinate token streaming, multi-turn interaction, and memory-efficient generation. We mistakenly added a second event loop, thus making the program stuck forever. Our fix ensures that all async execution happens within SGLang’s own loop by running the existing loop instead of invoking asyncio.run() inside async_generate.
+
+- **Asynchronous Rollout for Multi-Turn Interactions**: Synchronous rollouts often suffer from the long-tail problem, where the slowest sample in a batch delays the entire pipeline. This issue is especially prominent in multi-turn tasks involving variable-length dialogues and tool calls. To address this, we implemented asynchronous rollout at the request level, allowing each dialogue to progress independently.
+
+- **Event Loop Conflicts in Asynchronous Execution**: During testing, we encountered a problem: `async_generate` deadlocked. After extensive investigation, we found that the root cause was the existence of multiple concurrent event loops, violating Python's asyncio design. SGLang internally manages its own asynchronous event loop to coordinate token streaming, multi-turn interaction, and memory-efficient generation. We mistakenly added a second event loop, thus making the program stuck forever. Our fix ensures that all async execution happens within SGLang's own loop by running the existing loop instead of invoking asyncio.run() inside async_generate.
 
 ## Acknowledgments
+
+We extend our gratitude to over ten contributors from both China and the United States:
 
 - ModelBest/OpenBMB
 - Tsinghua University
@@ -228,36 +237,36 @@ With this plugin-style architecture, tools can be flexibly reused across tasks a
 
 ## Our Work Plan
 
-(Continuously updating, track [Multi-turn rollout Status & Roadmap · Issue #131 · zhaochenyang20/Awesome-ML-SYS-Tutorial ](https://github.com/zhaochenyang20/Awesome-ML-SYS-Tutorial/issues/131) for latest status and plans.)
+(Continuously updating, track [Multi-turn rollout Status & Roadmap](https://github.com/zhaochenyang20/Awesome-ML-SYS-Tutorial/issues/131) for latest status and plans.)
 
 With the initial version stabilized and training verified, we are now expanding the capabilities and real-world applicability of our multi-turn RLHF framework. Our next-phase goals include:
 
-### **Stage 1 (done)**
+### Stage 1 (Completed)
 
-- Move from batch-level rollout to request-level async rollout with tool interaction.
-- Support FSDP multi-turn with guaranteed training accuracy.
+- Transition from batch-level to request-level async rollout with tool interaction
+- Support FSDP multi-turn with guaranteed training accuracy
 
-### **Stage 2 (Currently In Progress)**
+### Stage 2 (Currently In Progress)
 
-- Add support for real-world tools, like *Search* and *Code Interpreter*.
-- Provide Qwen3 training examples.
-- Integrate FSDP2 for more scalable memory-efficient training.
-- Integrate with multi-node feature.
-- Add initial support for VLM .
-- Support Megatron backend.
+- Add support for real-world tools, such as Search and Code Interpreter
+- Provide Qwen3 training examples
+- Integrate FSDP2 for more scalable memory-efficient training
+- Support multi-node training
+- Add initial support for Vision Language Models (VLM)
+- Support Megatron backend
 
-### **Stage 3**
+### Stage 3
 
-- Introduce a new Agentic Trainer that supports fully asynchronous loops: *fetch → rollout → reward calculation → filter micro-batch*.
-- Support partial rollout and replay buffer, enabling fine-grained asynchronization and currency.
-- Expand tool coverage and task variety.
+- Introduce a new Agentic Trainer that supports fully asynchronous loops: fetch → rollout → reward calculation → filter micro-batch
+- Support partial rollout and replay buffer, enabling fine-grained asynchronization and concurrency
+- Expand tool coverage and task variety
 
-### **Stage 4**
+### Stage 4
 
-- Introduce user interaction simulation.
+- Introduce user interaction simulation for real user feedback modeling
 
-### **Framework Refactor**
+### Framework Refactor
 
-- Combine `sglang` and `sglang_async` rollout engines to unify the interface.
+- Combine `sglang` and `sglang_async` rollout engines to unify the interface
 
 We actively welcome the community to collaborate with us to push forward the frontier of RLHF research and applications.
