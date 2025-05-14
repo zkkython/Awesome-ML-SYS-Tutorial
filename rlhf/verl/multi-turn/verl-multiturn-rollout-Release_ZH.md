@@ -220,7 +220,7 @@ actor_rollout_ref:
 
 感谢中美两地十余名贡献者的辛勤付出：
 
-- ModelBest/OpenBMB
+- 面壁智能/OpenBMB
 - Tsinghua University
 - SGLang RLHF Team
 - verl Team
