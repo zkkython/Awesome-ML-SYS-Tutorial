@@ -1,5 +1,5 @@
 # SGLang & veRL: Pioneering End-to-End Multi-Turn RLHF
-by: The SGLang Team, May 03, 2025
+by: The SGLang Team, May 12, 2025
 
 We are thrilled to announce the release of the first fully functional, convergence-verified, end-to-end open source multi-turn Reinforcement Learning with Human Feedback (RLHF) framework, powered by SGLang and integrated with veRL.
 
@@ -115,14 +115,9 @@ function now() {
 
 #### Download the Dataset
 
-Note that we updated the data process script in [this PR](https://github.com/volcengine/verl/pull/1445
-), please check whether you are using the latest one.
-
 ```bash
 python3 ./examples/data_preprocess/gsm8k_multiturn_w_tool.py
 ```
-
-*Note: Due to a minor inconsistency in the `main` branch introduced during a previous merge, the official script may not exactly match the one used in our experiments. We're working on a fix — in the meantime, please use the Gist version to ensure correct prompt formatting and data alignment.*
 
 #### Run
 
@@ -201,7 +196,7 @@ Breakdown of the Configuration:
 
 During rollout:
 
-1. Preprocess `generate_sequences_with_tool` prompts with intersection of available tools and sample_level `tool_kwargs` to generate prompt with sample specific tools and handle prompts in message list way.
+1. Preprocess `generate_sequences_with_tools` prompts with intersection of available tools and sample_level `tool_kwargs` to generate prompt with sample specific tools and handle prompts in message list way.
 2. The LLM generates a response containing a structured function call (tool invocation) based on the schema.
 3. `AsyncSGLangRollout` uses a `FunctionCallParser` to detect and extract tool calls from the output.
 4. The rollout engine calls `tool.execute()` with parsed arguments.
@@ -218,12 +213,11 @@ With this plugin-style architecture, tools can be flexibly reused across tasks a
 
 ## Challenges and Methods
 
-- **Padding Strategy Mismatch**: veRL adopts a left-padding strategy for prompts and a right-padding strategy for responses, which introduces a padding inconsistency with our initial version of code. To mitigate this, our implementation explicitly tracks token positions across segments and applies tailored masks to maintain correctness.
 - **Multi-Turn Loss Masking:** Most existing RLHF frameworks assume a single-turn generation pattern and lack support for granular, token-level loss masking across multiple dialogue turns. However, in multi-turn settings—especially with tool interactions—not every generated token should contribute to the learning signal. For example, some tool-generated responses should be excluded from the optimization process. We addressed this by designing a custom multi-turn loss masking mechanism, allowing fine-grained control over which tokens are included in policy gradient updates, thereby ensuring an accurate reward computation.
 - **Generalized Tool API Design**: Environment in the RLHF training scenarios could be complicated, and customized tools are needed for agents to interact with the outside world. To support flexible and reusable tool integration, we designed a generalized tool interface. This design enables users to register tools with their customized functions into the rollout process. By unifying tool definitions in a schema-driven format, we make our framework highly extensible to easily add tools and reuse them across tasks and models without much modification.
 - **SPMD Conflicts in Tool Invocation**: In tensor-parallel (TP) environments, invoking external tools—such as API calls, script evaluators, or reward calculators—must be controlled to avoid concurrency issues. A naive implementation may result in the same tool being called multiple times in parallel across TP ranks, causing inconsistencies or deadlocks. To avoid this, all tool invocations are restricted to TP rank 0, with results broadcast to other ranks. This avoids performance bottlenecks due to redundant calls.
 - **Asynchronous Rollout for Multi-Turn Interactions**: Synchronous rollouts often suffer from the long-tail problem, where the slowest sample in a batch delays the entire pipeline. This issue is especially prominent in multi-turn tasks involving variable-length dialogues and tool calls. To address this, we implemented asynchronous rollout at the request level, allowing each dialogue to progress independently. 
-- **Event Loop Conflicts in Asynchronous Execution**: During testing, we encountered a problem: with enable_memory_saver on, async_generate got hung. After extensive investigation, we found that the root cause was the existence of multiple concurrent event loops, violating Python’s asyncio design. SGLang internally manages its own asynchronous event loop to coordinate token streaming, multi-turn interaction, and memory-efficient generation. We mistakenly added a second event loop, thus making the program stuck forever. Our fix ensures that all async execution happens within SGLang’s own loop by running the existing loop instead of invoking asyncio.run() inside async_generate.
+- **Event Loop Conflicts in Asynchronous Execution**: During testing, we encountered a problem: `async_generate` deadlocked. After extensive investigation, we found that the root cause was the existence of multiple concurrent event loops, violating Python’s asyncio design. SGLang internally manages its own asynchronous event loop to coordinate token streaming, multi-turn interaction, and memory-efficient generation. We mistakenly added a second event loop, thus making the program stuck forever. Our fix ensures that all async execution happens within SGLang’s own loop by running the existing loop instead of invoking asyncio.run() inside async_generate.
 
 ## Acknowledgments
 
@@ -234,11 +228,36 @@ With this plugin-style architecture, tools can be flexibly reused across tasks a
 
 ## Our Work Plan
 
-- During training, NaN losses were observed. We analyzed that it may be because of the extreme discrepancies between the actor and reference model log probabilities, which lead to unstable importance sampling ratios. We are currently working on solving this problem.
-- Integration of multi-turn RLHF-suitable tasks (e.g., R1-Searcher, sandbox fusion)
-- Support more policy gradient estimators beyond GRPO
-- Improve step-level reward integration
-- Simulate human-in-the-loop for multi-turn RLHF
-- Introduce micro-batching and agentic rollout loop
+(Continuously updating, track [Multi-turn rollout Status & Roadmap · Issue #131 · zhaochenyang20/Awesome-ML-SYS-Tutorial ](https://github.com/zhaochenyang20/Awesome-ML-SYS-Tutorial/issues/131) for latest status and plans.)
 
-We welcome the community to collaborate with us to push forward the frontier of RLHF research and applications.
+With the initial version stabilized and training verified, we are now expanding the capabilities and real-world applicability of our multi-turn RLHF framework. Our next-phase goals include:
+
+### **Stage 1 (done)**
+
+- Move from batch-level rollout to request-level async rollout with tool interaction.
+- Support FSDP multi-turn with guaranteed training accuracy.
+
+### **Stage 2 (Currently In Progress)**
+
+- Add support for real-world tools, like *Search* and *Code Interpreter*.
+- Provide Qwen3 training examples.
+- Integrate FSDP2 for more scalable memory-efficient training.
+- Integrate with multi-node feature.
+- Add initial support for VLM .
+- Support Megatron backend.
+
+### **Stage 3**
+
+- Introduce a new Agentic Trainer that supports fully asynchronous loops: *fetch → rollout → reward calculation → filter micro-batch*.
+- Support partial rollout and replay buffer, enabling fine-grained asynchronization and currency.
+- Expand tool coverage and task variety.
+
+### **Stage 4**
+
+- Introduce user interaction simulation.
+
+### **Framework Refactor**
+
+- Combine `sglang` and `sglang_async` rollout engines to unify the interface.
+
+We actively welcome the community to collaborate with us to push forward the frontier of RLHF research and applications.
