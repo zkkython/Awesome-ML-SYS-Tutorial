@@ -122,6 +122,8 @@ Note that we updated the data process script in [this PR](https://github.com/vol
 python3 ./examples/data_preprocess/gsm8k_multiturn_w_tool.py
 ```
 
+*Note: Due to a minor inconsistency in the `main` branch introduced during a previous merge, the official script may not exactly match the one used in our experiments. We're working on a fix — in the meantime, please use the Gist version to ensure correct prompt formatting and data alignment.*
+
 #### Run
 
 ```bash
@@ -179,6 +181,8 @@ actor_rollout_ref:
 - `tool_config_path` : Path to a YAML file defining all tool schemas and associated Python classes.
 - `format` : Format for tool interaction messages (currently supports `chatml` only).
 
+![Tool_Lifecycle_and_Request_State_Transaction](./Tool_Lifecycle_and_Request_State_Transaction.png)
+
 #### Example: GSM8K Tool Configuration
 
 To illustrate how to configure a tool, we provide an example based on the Gsm8kTool, designed for evaluating answers to GSM8K math problems to calculate rewards. The tool configuration is defined [here](https://github.com/volcengine/verl/blob/main/examples/sglang_multiturn/config/tool_config/gsm8k_tool_config.yaml).
@@ -209,6 +213,8 @@ During rollout:
 7. After the full rollout, the tool’s `calc_reward()` is called to compute final reward.
 
 With this plugin-style architecture, tools can be flexibly reused across tasks and agents without changing the core engine or rollout loop.
+
+![Multi-Turn_Rollout_Workflow](./Multi-Turn_Rollout_Workflow.png)
 
 ## Challenges and Methods
 
