@@ -2,7 +2,7 @@
 
 本文将详细介绍 DP Attention 的原理与实现。如果您已了解 SGLang 的张量并行（TP）、数据并行（DP）机制及其执行链路，那么理解本文内容将会相对容易。若不熟悉相关背景，建议先行阅读《Sglang 源码学习笔记（三）- 分布式和并行（以deepseek 为例）（WIP） - 进击的Bruce的文章 - 知乎》以建立基础。https://zhuanlan.zhihu.com/p/1890082781461207006
 
-关于 SGLang DP Attention 的官方介绍，可参考 ：https://lmsys.org/blog/2024-12-04-sglang-v0-4/#data-parallelism-attention-for-deepseek-models
+关于 SGLang DP Attention 的官方介绍，以及优化效果可参考 ：https://lmsys.org/blog/2024-12-04-sglang-v0-4/#data-parallelism-attention-for-deepseek-models
 
 官方的描述是：
 
@@ -10,7 +10,10 @@
 > 
 > 
 > To overcome this, we've implemented data parallelism (DP) for the multi-head latent attention (MLA) mechanism to improve throughput for DeepSeek models. By adopting DP for the attention component, the KV cache is significantly reduced, allowing for larger batch sizes. In our DP attention implementation, each DP worker handles different types of batches (prefill, decode, idle) independently. The attention-processed data will be all-gathered among all workers before entering the Mixture-of-Experts (MoE) layer, and after processing through the MoE, the data will be redistributed back to each worker. The figure below illustrates this idea.
-> 
+
+优化效果：With data parallelism attention enabled, we have achieved up to 1.9x decoding throughput improvement compared to the previous version.
+
+这一优化提升了在大批量场景下服务器受限于 KV 缓存容量时的峰值吞吐量，但不建议用于低延迟、小批量的场景。Ref: https://github.com/sgl-project/sglang/blob/main/docs/references/deepseek.md
 
 **请注意：为便于理解 DP Attention 的核心思想，本文将主要解析其初版实现代码（见 PR #1970），该版本要求 DP_SIZE 与 TP_SIZE 相等。：https://github.com/sgl-project/sglang/pull/1970**
 
