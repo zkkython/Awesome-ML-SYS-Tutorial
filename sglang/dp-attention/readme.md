@@ -13,7 +13,7 @@
 
 优化效果：With data parallelism attention enabled, we have achieved up to 1.9x decoding throughput improvement compared to the previous version.
 
-这一优化提升了在大批量场景下服务器受限于 KV 缓存容量时的峰值吞吐量，但不建议用于低延迟、小批量的场景。Ref: https://github.com/sgl-project/sglang/blob/main/docs/references/deepseek.md
+注意：这一优化提升了在大批量场景下服务器受限于 KV 缓存容量时的峰值吞吐量，但不建议用于低延迟、小批量的场景。Ref: https://github.com/sgl-project/sglang/blob/main/docs/references/deepseek.md
 
 **请注意：为便于理解 DP Attention 的核心思想，本文将主要解析其初版实现代码（见 PR #1970），该版本要求 DP_SIZE 与 TP_SIZE 相等。：https://github.com/sgl-project/sglang/pull/1970**
 
@@ -48,6 +48,8 @@ else:
 因此，SGLang 提出了采用数据并行（DP）方式来优化 MLA 处理效率的方案。
 
 值得注意的是，类似的问题也存在于其他模型中。例如，Qwen/Qwen3-235B-A22B 的 num_key_value_heads 为4，在进行大规模部署时，若 tp_size 较大，同样可能导致 KV Cache 的冗余。因此，SGLang 也为 Qwen3-MOE 模型引入了 DP Attention 支持，详情可参见 PR #6121：https://github.com/sgl-project/sglang/pull/6121
+
+注意：这一优化提升了在大批量场景下服务器受限于 KV 缓存容量时的峰值吞吐量，但不建议用于低延迟、小批量的场景。Ref: https://github.com/sgl-project/sglang/blob/main/docs/references/deepseek.md
 
 
 
