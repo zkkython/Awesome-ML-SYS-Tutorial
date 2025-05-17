@@ -23,7 +23,7 @@ SGLang v0.4 的发布说明中提到：
 > The most common parallelism strategy for inference is tensor parallelism. However, it might not be the most efficient strategy for certain models. For example, DeepSeek models use MLA and only have one KV head. If we use tensor parallelism on 8 GPUs, it will lead to duplicated KV cache and unwanted memory usage.
 > 
 
-如发布说明所述，DeepSeek模型中的多头潜在注意力（MLA）机制的 num_kv_heads (KV头数量) 为 1 （减少Decode，显存压力）。
+如发布说明所述，DeepSeek模型中的多头潜在注意力（MLA）机制的 num_kv_heads (KV头数量) 为 1 （减少 KV Cache 来压缩显存占用，从而优化推理速度）。
 
 在 SGLang （以及其他推理引擎）的 QKVParallelLinear（用于注意力机制QKV变换的线性层）实现中，其并行策略如下方代码片段所示：
 
@@ -95,7 +95,7 @@ hidden_states = hidden_states[start_idx:end_idx]
 
 SGLang 后续版本的 DP Attention 进一步增强，已支持 `1 < dp-size <= tp-size` 的灵活配置。
 
-此外，针对混合专家（MoE）模型中的稠密前馈网络（Dense FFNs），SGLang 也支持 `moe_dense_tp_size=[1, None]` 的配置选项。特别地，当该参数设置为 `1` 时（即对这些稠密FFN层采用数据并行），可以有效避免高张量并行度下常见的计算单元碎片化问题，同时优化内存使用效率、减少通信开销，进而提升整体系统的扩展性和性能。关于此配置的更详细说明，请参阅：https://lmsys.org/blog/2025-05-05-large-scale-ep/#dense-ffns
+此外，针对 MoE 模型中的 Dense FFNs，SGLang 也支持 `moe_dense_tp_size=[1, None]` 的配置选项。特别地，当该参数设置为 `1` 时（即对这些 Dense FFN 层采用数据并行），可以有效避免高张量并行度下常见的计算单元碎片化问题，同时优化内存使用效率、减少通信开销，进而提升整体系统的扩展性和性能。关于此配置的更详细说明，请参阅：https://lmsys.org/blog/2025-05-05-large-scale-ep/#dense-ffns
 
 
 
